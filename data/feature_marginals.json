@@ -1,0 +1,124 @@
+{
+  "business_count": {
+    "mean": 45,
+    "std": 20,
+    "min": 5,
+    "max": 120
+  },
+  "total_employees": {
+    "mean": 3500,
+    "std": 2800,
+    "min": 100,
+    "max": 15000
+  },
+  "total_revenue": {
+    "mean": 55000000.0,
+    "std": 45000000.0,
+    "min": 1000000.0,
+    "max": 200000000.0
+  },
+  "avg_wage": {
+    "mean": 65000,
+    "std": 15000,
+    "min": 30000,
+    "max": 120000
+  },
+  "industry_diversity": {
+    "mean": 0.55,
+    "std": 0.25,
+    "min": 0.05,
+    "max": 1.0
+  },
+  "strategic_score": {
+    "mean": 68.5,
+    "std": 14.3,
+    "min": 30,
+    "max": 95
+  },
+  "innovation_score": {
+    "mean": 62.3,
+    "std": 18.7,
+    "min": 20,
+    "max": 95
+  },
+  "market_score": {
+    "mean": 60.0,
+    "std": 18.0,
+    "min": 5,
+    "max": 100
+  },
+  "competition_score": {
+    "mean": 40.0,
+    "std": 20.0,
+    "min": 5,
+    "max": 100
+  },
+  "modularity": {
+    "mean": 0.45,
+    "std": 0.15,
+    "min": 0.1,
+    "max": 0.9
+  },
+  "avg_clustering": {
+    "mean": 0.4,
+    "std": 0.2,
+    "min": 0.05,
+    "max": 0.95
+  },
+  "network_density": {
+    "mean": 0.5,
+    "std": 0.2,
+    "min": 0.05,
+    "max": 0.95
+  },
+  "edge_count": {
+    "mean": 450,
+    "std": 180,
+    "min": 50,
+    "max": 1200
+  },
+  "correlations": [
+    {
+      "features": [
+        "business_count",
+        "total_employees"
+      ],
+      "value": 0.82
+    },
+    {
+      "features": [
+        "total_employees",
+        "total_revenue"
+      ],
+      "value": 0.8
+    },
+    {
+      "features": [
+        "industry_diversity",
+        "network_density"
+      ],
+      "value": 0.55
+    },
+    {
+      "features": [
+        "modularity",
+        "avg_clustering"
+      ],
+      "value": 0.6
+    },
+    {
+      "features": [
+        "strategic_score",
+        "market_score"
+      ],
+      "value": 0.5
+    },
+    {
+      "features": [
+        "innovation_score",
+        "market_score"
+      ],
+      "value": 0.52
+    }
+  ]
+}

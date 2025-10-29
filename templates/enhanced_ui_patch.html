@@ -1,0 +1,240 @@
+<!-- Enhanced UI Patch for New Analysis Modules -->
+
+<!-- Add these sections after the existing cluster details section -->
+
+<!-- 1. SBIR Analysis Section (add after cluster details) -->
+<div id="sbirAnalysisSection" class="mt-4" style="display: none;">
+  <h3>SBIR/STTR Innovation Funding Analysis</h3>
+  <div class="row">
+    <div class="col-md-6">
+      <div class="metric-card">
+        <h5>Total Awards</h5>
+        <p class="metric-value" id="sbirTotalAwards">0</p>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="metric-card">
+        <h5>Total Funding</h5>
+        <p class="metric-value" id="sbirTotalFunding">$0</p>
+      </div>
+    </div>
+  </div>
+  <div id="sbirByClusterChart"></div>
+</div>
+
+<!-- 2. Enhanced Cluster Details (update the existing displayClusterDetails function) -->
+<script>
+function displayEnhancedClusterDetails(clusters) {
+  let html = "";
+  
+  clusters.slice(0, 3).forEach((cluster, index) => {
+    // Handle both cluster formats
+    const gdpImpact = cluster.metrics ? cluster.metrics.projected_gdp_impact : cluster.projected_gdp_impact;
+    const totalJobs = cluster.metrics ? cluster.metrics.projected_jobs : cluster.projected_jobs;
+    const riskScore = cluster.metrics ? cluster.metrics.risk_score : cluster.risk_score;
+    
+    html += `
+      <div class="cluster-detail-card enhanced-cluster">
+        <h5>${index + 1}. ${cluster.name}</h5>
+        
+        <!-- Basic Metrics Row -->
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <h6>Core Metrics</h6>
+            <p><strong>Type:</strong> ${cluster.type || "mixed"}</p>
+            <p><strong>Strategic Score:</strong> ${Math.round(cluster.cluster_score || cluster.total_score || 0)}/100</p>
+            <p><strong>Businesses:</strong> ${cluster.business_count || cluster.businesses?.length || 0}</p>
+            <p><strong>GDP Impact:</strong> ${formatCurrency(gdpImpact)}</p>
+            <p><strong>Jobs:</strong> ${totalJobs.toLocaleString()}</p>
+          </div>
+          
+          <div class="col-md-4">
+            <h6>Risk & Longevity</h6>
+            <p><strong>Risk Level:</strong> <span class="badge ${riskScore < 30 ? 'bg-success' : riskScore < 60 ? 'bg-warning' : 'bg-danger'}">${riskScore < 30 ? "Low" : riskScore < 60 ? "Medium" : "High"}</span></p>
+            ${cluster.longevity_score ? `<p><strong>Longevity Score:</strong> ${cluster.longevity_score.toFixed(1)}/100</p>` : ''}
+            ${cluster.longevity_assessment ? `
+              <p><strong>Time Horizon:</strong> ${cluster.longevity_assessment.time_horizon}</p>
+              <p><strong>Longevity Grade:</strong> <span class="badge bg-${getGradeColor(cluster.longevity_assessment.grade)}">${cluster.longevity_assessment.grade}</span></p>
+            ` : ''}
+          </div>
+          
+          <div class="col-md-4">
+            <h6>Innovation Metrics</h6>
+            ${cluster.patent_analysis ? `
+              <p><strong>Innovation Score:</strong> ${cluster.patent_analysis.innovation_score.toFixed(1)}/100</p>
+              <p><strong>Patent Count:</strong> ${cluster.patent_analysis.patent_count}</p>
+              <p><strong>Tech Diversity:</strong> ${cluster.patent_analysis.technology_diversity.toFixed(1)}/100</p>
+            ` : '<p class="text-muted">Patent analysis unavailable</p>'}
+          </div>
+        </div>
+        
+        <!-- Enhanced Analysis Row -->
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <h6>Workforce Analysis</h6>
+            ${cluster.workforce_analysis ? `
+              <p><strong>Current Workforce:</strong> ${cluster.workforce_analysis.current_workforce.toLocaleString()}</p>
+              <p><strong>Projected Need (5yr):</strong> ${cluster.workforce_analysis.projected_needs?.total_jobs || 'N/A'}</p>
+              <p><strong>Key Skill Gaps:</strong></p>
+              <ul class="small">
+                ${cluster.workforce_analysis.skill_gaps.slice(0, 3).map(gap => `<li>${gap}</li>`).join('')}
+              </ul>
+            ` : '<p class="text-muted">Workforce analysis unavailable</p>'}
+          </div>
+          
+          <div class="col-md-4">
+            <h6>Market Opportunity</h6>
+            ${cluster.market_analysis ? `
+              <p><strong>Market Score:</strong> ${cluster.market_analysis.market_opportunity_score.toFixed(1)}/100</p>
+              <p><strong>Market Size:</strong> $${(cluster.market_analysis.market_size / 1e9).toFixed(1)}B</p>
+              <p><strong>Growth Rate:</strong> ${(cluster.market_analysis.growth_rate * 100).toFixed(1)}%</p>
+              <p><strong>Entry Difficulty:</strong> ${cluster.market_analysis.entry_barriers?.overall_difficulty || 'N/A'}</p>
+            ` : '<p class="text-muted">Market analysis unavailable</p>'}
+          </div>
+          
+          <div class="col-md-4">
+            <h6>Revenue Projections</h6>
+            ${cluster.revenue_projections && cluster.revenue_projections.growth_metrics ? `
+              <p><strong>Revenue CAGR:</strong> ${cluster.revenue_projections.growth_metrics.cagr.toFixed(1)}%</p>
+              <p><strong>5yr Revenue:</strong> $${(cluster.revenue_projections.growth_metrics.revenue_potential / 1e6).toFixed(1)}M</p>
+              <p><strong>Job Creation:</strong> +${cluster.revenue_projections.growth_metrics.job_creation}</p>
+            ` : '<p class="text-muted">Revenue projections unavailable</p>'}
+          </div>
+        </div>
+        
+        <!-- University & Research Row -->
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <h6>University Integration</h6>
+            ${cluster.university_integration ? `
+              <p><strong>Impact Score:</strong> ${cluster.university_integration.impact_score.toFixed(1)}/100</p>
+              <p><strong>Talent Pipeline:</strong> ${cluster.university_integration.talent_pipeline} graduates/year</p>
+              <p><strong>Research Alignment:</strong> ${cluster.university_integration.research_alignment}/10</p>
+              <p><strong>Partnership Potential:</strong> ${cluster.university_integration.partnership_potential ? 'High' : 'Moderate'}</p>
+            ` : '<p class="text-muted">University integration analysis unavailable</p>'}
+          </div>
+          
+          <div class="col-md-6">
+            <h6>Key Risks & Mitigation</h6>
+            ${cluster.longevity_assessment && cluster.longevity_assessment.key_risks ? `
+              <ul class="small">
+                ${cluster.longevity_assessment.key_risks.slice(0, 3).map(risk => 
+                  `<li><strong>${risk.category}:</strong> ${risk.severity} (${risk.components.join(', ')})</li>`
+                ).join('')}
+              </ul>
+            ` : '<p class="text-muted">Risk assessment unavailable</p>'}
+          </div>
+        </div>
+        
+        <!-- ML Predictions (if available) -->
+        ${cluster.ml_predictions ? `
+          <div class="row">
+            <div class="col-12">
+              <h6>ML Predictions</h6>
+              <div class="ml-confidence-bar">
+                <div class="progress">
+                  <div class="progress-bar ${cluster.confidence_score >= 0.8 ? 'bg-success' : cluster.confidence_score >= 0.6 ? 'bg-warning' : 'bg-danger'}" 
+                       style="width: ${(cluster.confidence_score * 100).toFixed(0)}%">
+                    Confidence: ${(cluster.confidence_score * 100).toFixed(0)}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+      <hr>
+    `;
+  });
+  
+  $("#clusterDetailsList").html(html);
+}
+
+// Helper function for grade colors
+function getGradeColor(grade) {
+  const gradeColors = {
+    'A+': 'success', 'A': 'success', 'A-': 'success',
+    'B+': 'info', 'B': 'info', 'B-': 'info',
+    'C+': 'warning', 'C': 'warning', 'C-': 'warning',
+    'D': 'danger', 'F': 'danger'
+  };
+  return gradeColors[grade] || 'secondary';
+}
+
+// Update the main displayResults function to show SBIR analysis
+function displayEnhancedResults(results) {
+  // ... existing code ...
+  
+  // Display SBIR Analysis if available
+  if (results.sbir_analysis) {
+    $("#sbirAnalysisSection").show();
+    $("#sbirTotalAwards").text(results.sbir_analysis.total_awards);
+    $("#sbirTotalFunding").text(formatCurrency(results.sbir_analysis.total_funding));
+    
+    // Create SBIR by cluster chart
+    if (results.sbir_analysis.by_cluster) {
+      const sbirData = [{
+        x: Object.keys(results.sbir_analysis.by_cluster),
+        y: Object.values(results.sbir_analysis.by_cluster).map(c => c.funding),
+        type: 'bar',
+        name: 'SBIR/STTR Funding',
+        marker: { color: 'rgb(76, 175, 80)' }
+      }];
+      
+      const sbirLayout = {
+        title: 'SBIR/STTR Funding by Cluster',
+        xaxis: { title: 'Cluster' },
+        yaxis: { title: 'Funding Amount ($)' }
+      };
+      
+      Plotly.newPlot('sbirByClusterChart', sbirData, sbirLayout);
+    }
+  }
+  
+  // Use enhanced cluster display
+  const clusters = results.steps?.cluster_optimization?.clusters || [];
+  displayEnhancedClusterDetails(clusters);
+}
+</script>
+
+<!-- 3. Add CSS for enhanced displays -->
+<style>
+.enhanced-cluster {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  background-color: #f9f9f9;
+}
+
+.enhanced-cluster h6 {
+  color: #1976d2;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 5px;
+}
+
+.metric-card {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.metric-value {
+  font-size: 2em;
+  font-weight: bold;
+  color: #1976d2;
+  margin: 0;
+}
+
+.ml-confidence-bar {
+  margin-top: 10px;
+}
+
+.badge {
+  font-size: 0.875em;
+  padding: 0.25em 0.5em;
+}
+</style>

@@ -1,0 +1,136 @@
+{
+  "created": "2025-08-13T19:28:16.207093",
+  "version": "3.0",
+  "description": "Realistic ML training data with Critical Mass and sustainability metrics",
+  "features": [
+    "business_count",
+    "total_employees",
+    "total_revenue",
+    "avg_business_age",
+    "strategic_score",
+    "innovation_score",
+    "cluster_type",
+    "avg_patents",
+    "critical_mass",
+    "supply_chain_completeness",
+    "geographic_density",
+    "workforce_diversity",
+    "natural_community_score"
+  ],
+  "targets": [
+    "gdp_impact",
+    "job_creation",
+    "expected_roi"
+  ],
+  "economic_multipliers": {
+    "technology": {
+      "min": 1.8,
+      "max": 2.2,
+      "avg": 2.0
+    },
+    "biosciences": {
+      "min": 1.7,
+      "max": 2.1,
+      "avg": 1.9
+    },
+    "logistics": {
+      "min": 1.5,
+      "max": 1.8,
+      "avg": 1.65
+    },
+    "manufacturing": {
+      "min": 1.4,
+      "max": 1.7,
+      "avg": 1.55
+    },
+    "animal_health": {
+      "min": 1.6,
+      "max": 2.0,
+      "avg": 1.8
+    },
+    "mixed": {
+      "min": 1.5,
+      "max": 1.9,
+      "avg": 1.7
+    }
+  },
+  "job_growth_rates": {
+    "technology": {
+      "min": 0.2,
+      "max": 0.45,
+      "avg": 0.32
+    },
+    "biosciences": {
+      "min": 0.18,
+      "max": 0.4,
+      "avg": 0.28
+    },
+    "logistics": {
+      "min": 0.15,
+      "max": 0.35,
+      "avg": 0.25
+    },
+    "manufacturing": {
+      "min": 0.1,
+      "max": 0.3,
+      "avg": 0.2
+    },
+    "animal_health": {
+      "min": 0.12,
+      "max": 0.35,
+      "avg": 0.22
+    },
+    "mixed": {
+      "min": 0.15,
+      "max": 0.3,
+      "avg": 0.22
+    }
+  },
+  "roi_ranges": {
+    "technology": {
+      "min": 0.12,
+      "max": 0.28,
+      "avg": 0.18
+    },
+    "biosciences": {
+      "min": 0.15,
+      "max": 0.35,
+      "avg": 0.22
+    },
+    "logistics": {
+      "min": 0.08,
+      "max": 0.18,
+      "avg": 0.12
+    },
+    "manufacturing": {
+      "min": 0.06,
+      "max": 0.15,
+      "avg": 0.1
+    },
+    "animal_health": {
+      "min": 0.1,
+      "max": 0.22,
+      "avg": 0.15
+    },
+    "mixed": {
+      "min": 0.08,
+      "max": 0.2,
+      "avg": 0.14
+    }
+  },
+  "data_stats": {
+    "n_samples": 2000,
+    "gdp_multiplier_range": [
+      1.0086371628474025,
+      2.4198387128235033
+    ],
+    "job_growth_range": [
+      0.0782608695652174,
+      0.5147849462365591
+    ],
+    "roi_range": [
+      0.12148614924148246,
+      0.40398930791458715
+    ]
+  }
+}

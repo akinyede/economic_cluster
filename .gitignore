@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.Python
+.venv/
+venv/
+.env
+.env.*
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Data and cache
+analysis_output/
+cache/
+temp/
+logs/
+*.parquet
+*.feather
+*.arrow
+*.h5
+*.sqlite
+*.db
+*.db-journal
+
+# Large binaries and generated docs
+*.pptx
+*.docx
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.zip
+*.tar
+*.gz
+
+# App/runtime artifacts
+.DS_Store
+.ipynb_checkpoints/
+dist/
+build/
+
+# Models (optional: remove if you want models tracked)
+models/**
+
+# Local configs
+.vscode/
+.idea/
+*.code-workspace

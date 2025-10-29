@@ -1,0 +1,166 @@
+{
+  "n_samples": 3000,
+  "n_features": 18,
+  "features": [
+    "business_count",
+    "total_employees",
+    "total_revenue",
+    "avg_business_age",
+    "strategic_score",
+    "innovation_score",
+    "critical_mass",
+    "supply_chain_completeness",
+    "geographic_density",
+    "workforce_diversity",
+    "natural_community_score",
+    "cluster_synergy",
+    "market_position",
+    "kc_crime_safety",
+    "kc_development_activity",
+    "kc_demographic_strength",
+    "kc_infrastructure_score",
+    "kc_market_access"
+  ],
+  "kc_features": [
+    "kc_crime_safety",
+    "kc_development_activity",
+    "kc_demographic_strength",
+    "kc_infrastructure_score",
+    "kc_market_access"
+  ],
+  "targets": [
+    "gdp_impact",
+    "job_creation",
+    "roi_percentage"
+  ],
+  "feature_stats": {
+    "business_count": {
+      "mean": 54.709665905135665,
+      "std": 22.45561384540076,
+      "min": 14.266681939781495,
+      "max": 124.76610550462263
+    },
+    "total_employees": {
+      "mean": 7897.769452305082,
+      "std": 4892.639858995845,
+      "min": 994.1078177841515,
+      "max": 28355.609621522428
+    },
+    "total_revenue": {
+      "mean": 2365493945.2251344,
+      "std": 1551461483.409282,
+      "min": 245174212.00378698,
+      "max": 9564224653.480288
+    },
+    "avg_business_age": {
+      "mean": 15.828573272410823,
+      "std": 6.0897478393430235,
+      "min": 4.930756181997016,
+      "max": 35.921961214105295
+    },
+    "strategic_score": {
+      "mean": 75.42431079664493,
+      "std": 9.383118236044234,
+      "min": 52.88711545356757,
+      "max": 99.6151253767328
+    },
+    "innovation_score": {
+      "mean": 71.31748794091165,
+      "std": 12.931772615332731,
+      "min": 47.815121363898626,
+      "max": 101.66383424335203
+    },
+    "critical_mass": {
+      "mean": 68.09696273164407,
+      "std": 11.462299635644142,
+      "min": 43.35523886987475,
+      "max": 98.39108243491732
+    },
+    "supply_chain_completeness": {
+      "mean": 0.7137434192143407,
+      "std": 0.13736076320283297,
+      "min": 0.38501753958756973,
+      "max": 0.993160730700874
+    },
+    "geographic_density": {
+      "mean": 0.7000402349556589,
+      "std": 0.14309753001818998,
+      "min": 0.3844098111461892,
+      "max": 0.994159789650779
+    },
+    "workforce_diversity": {
+      "mean": 0.6934882966521453,
+      "std": 0.12893213055914773,
+      "min": 0.43355200379164505,
+      "max": 0.9931949345106789
+    },
+    "natural_community_score": {
+      "mean": 0.6813083989884291,
+      "std": 0.12117439699647173,
+      "min": 0.3823701036841181,
+      "max": 0.9400812428677725
+    },
+    "cluster_synergy": {
+      "mean": 71.48982606665597,
+      "std": 10.388679511969995,
+      "min": 47.7344383090183,
+      "max": 99.35052265307034
+    },
+    "market_position": {
+      "mean": 68.73081526435988,
+      "std": 9.0473973748852,
+      "min": 48.1170288195984,
+      "max": 94.24802317970527
+    },
+    "kc_crime_safety": {
+      "mean": 72.89835120104121,
+      "std": 8.612687278046574,
+      "min": 52.51194734231017,
+      "max": 94.15559709173205
+    },
+    "kc_development_activity": {
+      "mean": 71.75921935888326,
+      "std": 10.47254417311147,
+      "min": 47.83048503818696,
+      "max": 94.02815575806922
+    },
+    "kc_demographic_strength": {
+      "mean": 75.23240198564125,
+      "std": 10.495656028513057,
+      "min": 52.62974891065887,
+      "max": 99.36976062988693
+    },
+    "kc_infrastructure_score": {
+      "mean": 82.23301137698601,
+      "std": 7.916778382659785,
+      "min": 62.31226403801934,
+      "max": 102.07713282327632
+    },
+    "kc_market_access": {
+      "mean": 79.72670125359303,
+      "std": 8.400878310374875,
+      "min": 57.63974369780477,
+      "max": 99.40998961128655
+    }
+  },
+  "target_stats": {
+    "gdp_impact": {
+      "mean": 4849421881.669656,
+      "std": 3185175902.9166083,
+      "min": 474242113.59984475,
+      "max": 18830193364.814713
+    },
+    "job_creation": {
+      "mean": 18942.697,
+      "std": 11546.743524180114,
+      "min": 2486.0,
+      "max": 68341.0
+    },
+    "roi_percentage": {
+      "mean": 24.79749584040004,
+      "std": 2.166388383371879,
+      "min": 19.506447771279404,
+      "max": 30.0
+    }
+  }
+}

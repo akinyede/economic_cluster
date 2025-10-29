@@ -1,0 +1,36 @@
+{
+  "created": "2025-08-04T11:38:32.027746",
+  "version": "1.0",
+  "description": "Historical cluster performance data from real KC businesses",
+  "data_sources": {
+    "businesses": "kc_businesses_ks.csv, kc_businesses_mo.csv",
+    "employment": "BLS API (synthetic if no key)",
+    "economic": "FRED API (synthetic if no key)",
+    "patents": "USPTO API estimates"
+  },
+  "time_period": {
+    "cluster_formation": "2018-2020",
+    "performance_tracking": "through 2023"
+  },
+  "features": [
+    "business_count",
+    "total_employees",
+    "total_revenue",
+    "avg_business_age",
+    "strategic_score",
+    "innovation_score",
+    "cluster_type",
+    "avg_patents"
+  ],
+  "targets": [
+    "gdp_impact",
+    "job_creation",
+    "expected_roi"
+  ],
+  "summary_stats": {
+    "n_samples": 50,
+    "avg_gdp_multiplier": 1.310499310539572,
+    "avg_job_growth": 9.03339935487035,
+    "avg_roi": 0.31049931053957186
+  }
+}
