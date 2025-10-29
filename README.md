@@ -42,6 +42,12 @@ A comprehensive Python-based tool for predicting and optimizing economic develop
    - Research direction for universities
    - Policy recommendations with priority levels
 
+### Community Detection and Visualization
+- Louvain Community Detection: Builds a weighted business network and applies Louvain (python-louvain) to identify natural communities and compute modularity (Q). Falls back to heuristic “natural communities” if python-louvain is unavailable.
+- Consolidated Regions: Overlapping or duplicate clusters by type are consolidated (Jaccard overlap + centroid proximity) to avoid double counting; maps render a single cleaner polygon per merged region.
+- Concave Hull Boundaries: Cluster polygons use concave‑hull‑style union-of-buffers with Shapely and are clipped to KC county boundaries for realistic footprints.
+- Infrastructure Overlays: Toggleable OpenStreetMap overlays (highways, rail, transit hubs, airports, universities, hospitals, schools/colleges, logistics, power grid) plus a broadband proxy layer.
+
 ## Installation
 
 ```bash
@@ -61,6 +67,8 @@ cp .env.example .env
 # Edit .env with your configuration
 ```
 
+Required packages include `python-louvain` and `networkx` for community detection and `shapely` for geospatial boundaries (see `requirements.txt`).
+
 ## Configuration
 
 Edit `config.py` to customize:
@@ -69,6 +77,12 @@ Edit `config.py` to customize:
 - Economic targets (GDP, jobs, wages)
 - Geographic boundaries
 - Optimization parameters
+
+### Environment variables (optional)
+- `KCMO_APP_TOKEN` or `SOCRATA_APP_TOKEN` — Socrata app token to reduce throttling
+- `KCMO_DATASET_BUSINESS_LICENSES` — override business license dataset id (default `e5aw-jx7h`, fallback `pnm4-68wg`)
+- `KCMO_DATASET_CRIME` — crime dataset id (default `c44e-5qd5`), `KCMO_DATASET_CRIME_ALT` optional fallback
+- `FINAL_DATASET_CSV` — path to preloaded dataset (e.g., `data/final_enriched_entities_std.csv`) to bypass scraping
 
 ## Usage
 
@@ -98,6 +112,17 @@ python main.py
 # - cluster_analysis_results.json (detailed results)
 # - cluster_analysis_report.md (formatted report)
 ```
+
+### Web UI
+```bash
+python run_web.py
+# Open http://localhost:5001
+```
+Use “Enhanced with KC Data (Best Accuracy)” in the ML Enhancement dropdown to enable KC features.
+
+### Modes
+- Quick mode (faster): Samples businesses (default 10,000; configurable) and skips heavy patent analysis while preserving KC enhancement and clustering.
+- Full mode (comprehensive): Uses the full dataset with deeper dedup and analysis.
 
 ## Architecture
 
