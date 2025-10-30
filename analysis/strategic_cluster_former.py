@@ -511,7 +511,8 @@ class StrategicClusterFormer:
             risk_score += 15
         
         # Age risk (too many new businesses)
-        avg_age = 2025 - businesses['year_established'].mean()
+        from datetime import datetime as _dt
+        avg_age = _dt.now().year - businesses['year_established'].mean()
         if avg_age < 3:
             risk_score += 20
         elif avg_age < 5:

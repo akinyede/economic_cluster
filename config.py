@@ -20,6 +20,10 @@ class Config:
     EIA_API_KEY = os.getenv('EIA_API_KEY')
     ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
     
+    # Lens.org Patent API
+    LENS_API_TOKEN = os.getenv('LENS_API_TOKEN')
+    LENS_API_URL = os.getenv('LENS_API_URL', 'https://api.lens.org/patent/search')
+    
     # Geopolitical APIs
     CENSUS_API_KEY = os.getenv('CENSUS_API_KEY')
 

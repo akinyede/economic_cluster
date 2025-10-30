@@ -1819,6 +1819,7 @@
             <div class="card metric-card">
               <div class="metric-value" id="totalJobs">0</div>
               <div class="metric-label">Total Jobs</div>
+              <small id="jobsBreakdown" class="text-muted d-block" style="font-size: 0.85em;"></small>
             </div>
           </div>
           <div class="col-md-3">
@@ -1964,7 +1965,7 @@
             <!-- Feature Importance -->
             <div class="row mt-4">
               <div class="col-md-6">
-                <h5>ML Model Feature Importance</h5>
+                <h5>ML model Feature importance</h5>
                 <div id="featureImportanceChart"></div>
               </div>
               <div class="col-md-6">
@@ -3896,9 +3897,9 @@
 
         // Override some parameters based on mode
         if (isQuickMode) {
-          // Quick mode defaults: skip patents and reduce sample for speed
-          params.sample_size = 2000;
-          params.skip_patents = true;
+          // Quick mode defaults: sample 10,000 and INCLUDE patent search
+          params.sample_size = 10000;
+          params.skip_patents = false;
         }
 
         // Enhanced logging for debugging
@@ -4179,6 +4180,19 @@
           `);
         }
 
+        // Add consolidation info if available
+        (function(){
+          const pre = results?.steps?.cluster_optimization?.pre_consolidation_count;
+          const post = results?.steps?.cluster_optimization?.post_consolidation_count;
+          if (pre && post && pre !== post) {
+            $("#clustersFound").append(`
+              <small class="d-block text-muted" style="font-size: 0.8em;">
+                consolidated: ${pre} → ${post}
+              </small>
+            `);
+          }
+        })();
+
         // Update Target Status badge (restored tile)
         (function(){
           const meets = !!(impact && impact.meets_targets);
@@ -4196,6 +4210,13 @@
         if (impact.projected_roi !== undefined) {
           $("#projectedROI").text(impact.projected_roi.toFixed(0) + "%");
         }
+        // Jobs breakdown
+        (function(){
+          const direct = Math.round(impact?.projected_direct_jobs || 0);
+          const total = Math.round(impact?.projected_total_jobs || 0);
+          const indirect = Math.max(0, total - direct);
+          $("#jobsBreakdown").text(`(${direct.toLocaleString()} direct • ${indirect.toLocaleString()} indirect)`);
+        })();
         if (impact.total_investment_required !== undefined) {
           $("#investmentRequired").text("$" + (impact.total_investment_required / 1e6).toFixed(1) + "M");
         }
@@ -4876,7 +4897,8 @@
                                     : "High"
                                 }</p>
                                 ${cluster.critical_mass ? `<p><strong>Critical Mass:</strong> ${Math.round(cluster.critical_mass)}/100 <i class="fas fa-info-circle text-muted" title="Ecosystem completeness - higher scores indicate more sustainable clusters"></i></p>` : ''}
-                                ${cluster.sustainability_score ? `<p><strong>Sustainability Score:</strong> ${(cluster.sustainability_score * 100).toFixed(0)}% <i class="fas fa-leaf text-success" title="Long-term viability prediction based on Critical Mass and ecosystem factors"></i></p>` : ''}
+                                ${cluster.sustainability_score !== undefined ? `<p><strong>Sustainability Score:</strong> ${Number(cluster.sustainability_score).toFixed(0)}% <i class="fas fa-leaf text-success" title="Long-term viability prediction based on Critical Mass and ecosystem factors"></i></p>` : ''}
+                                ${cluster.unmatched_members && cluster.unmatched_members > 0 ? `<p><strong>Unmatched Members:</strong> ${cluster.unmatched_members}</p>` : ''}
                                 ${displayLongevityScore(cluster, clusters)}
                             </div>
                             <div class="col-md-6">`;

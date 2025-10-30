@@ -643,12 +643,14 @@ class MapGenerator:
         pass
 
         # Split into geographic sub-clusters to reduce over-coverage
-        subclusters = self._create_subclusters(businesses, max_distance=0.04)  # Increased distance for fewer subclusters
+        # Increase subcluster distance to group nearby businesses more broadly
+        subclusters = self._create_subclusters(businesses, max_distance=0.06)
         any_drawn = False
         for sub in subclusters:
             if len(sub) < 5:  # Increased minimum from 3 to 5
                 continue
-            boundary = self._create_cluster_boundaries(sub, buffer=0.003, clip_to_kc=True)  # Reduced buffer
+            # Expand buffer to enlarge visual footprint of cluster polygons
+            boundary = self._create_cluster_boundaries(sub, buffer=0.01, clip_to_kc=True)
             if not boundary:
                 continue
             any_drawn = True
@@ -700,8 +702,9 @@ class MapGenerator:
             logger.info(f"Adding circle at center {center}")
             # Size based on impact and business count
             gdp_impact = cluster.get('projected_gdp_impact', 0)
-            radius = 5000 + (len(businesses) * 100) + (gdp_impact / 1e6 * 10)
-            radius = min(radius, 15000)  # Cap size
+            # Scale radius more generously; cap higher for visibility
+            radius = 7000 + (len(businesses) * 150) + (gdp_impact / 1e6 * 15)
+            radius = min(radius, 30000)
             
             folium.Circle(
                 location=center,
@@ -1535,7 +1538,11 @@ class MapGenerator:
                     try:
                         kc_union = self._kc_union_polygon()
                         if kc_union is not None:
-                            geom = geom.intersection(kc_union)
+                            # Slightly expand county union to avoid visual clipping at edges
+                            try:
+                                geom = geom.intersection(kc_union)
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                 # Handle MultiPolygon by choosing the largest area polygon
@@ -1574,7 +1581,10 @@ class MapGenerator:
                 try:
                     kc_union = self._kc_union_polygon()
                     if kc_union is not None:
-                        buffered = buffered.intersection(kc_union)
+                        try:
+                            buffered = buffered.intersection(kc_union)
+                        except Exception:
+                            pass
                 except Exception as _:
                     pass
             
@@ -1604,7 +1614,8 @@ class MapGenerator:
         if not hasattr(self, "_kc_union_cache"):
             try:
                 polys = [shape(geo) for geo in KC_COUNTY_BOUNDARIES.values()]
-                self._kc_union_cache = unary_union(polys)
+                # Slightly expand the union to avoid hard clipping at county edges
+                self._kc_union_cache = unary_union(polys).buffer(0.02)
             except Exception:
                 self._kc_union_cache = None
         return self._kc_union_cache
@@ -1623,7 +1634,8 @@ class MapGenerator:
             # Union of small discs around each point to produce a concave silhouette
             unioned = unary_union([pt.buffer(radius_deg) for pt in points])
             # Smooth and clean minor artifacts
-            geom = unioned.buffer(0).simplify(radius_deg * 0.3, preserve_topology=True)
+            # Lighter simplification to preserve organic outlines
+            geom = unioned.buffer(0).simplify(radius_deg * 0.15, preserve_topology=True)
             return geom
         except Exception:
             return None
@@ -1649,9 +1661,13 @@ class MapGenerator:
                 return [valid_businesses]
             
             coords_array = np.array(coords, dtype=float)
-            # Scale longitude by cos(latitude) to approximate meters
-            mean_lat = np.nanmean(coords_array[:,0])
-            lon_scale = max(0.1, math.cos(math.radians(mean_lat)))
+            # Scale longitude by cos(latitude) to approximate meters (guard empty/NaN)
+            if coords_array.size == 0 or not np.isfinite(coords_array[:, 0]).any():
+                mean_lat = self.kc_center[0]
+            else:
+                mean_lat = float(np.nanmean(coords_array[:, 0]))
+            lon_scale = math.cos(math.radians(mean_lat)) if np.isfinite(mean_lat) else 0.0
+            lon_scale = max(0.1, float(lon_scale))
             scaled = coords_array.copy()
             scaled[:,1] = scaled[:,1] * lon_scale
             # Use DBSCAN for geographic clustering in scaled degrees
@@ -1683,11 +1699,14 @@ class MapGenerator:
                                 cluster_coords.append(coord)
                         if not cluster_coords:
                             continue
-                        cluster_coords = np.array(cluster_coords)
-                        # scale lon by cos(mean_lat) for distance consistency
                         cluster_coords = np.array(cluster_coords, dtype=float)
-                        mean_lat2 = np.nanmean(cluster_coords[:,0])
-                        scale2 = max(0.1, math.cos(math.radians(mean_lat2)))
+                        # scale lon by cos(mean_lat) for distance consistency (guard empty/NaN)
+                        if cluster_coords.size == 0 or not np.isfinite(cluster_coords[:, 0]).any():
+                            mean_lat2 = self.kc_center[0]
+                        else:
+                            mean_lat2 = float(np.nanmean(cluster_coords[:, 0]))
+                        scale2 = math.cos(math.radians(mean_lat2)) if np.isfinite(mean_lat2) else 0.0
+                        scale2 = max(0.1, float(scale2))
                         scaled_cluster = cluster_coords.copy()
                         scaled_cluster[:,1] *= scale2
                         scaled_point = point.copy()
@@ -2876,7 +2895,8 @@ class MapGenerator:
                         }
                     
                     # Calculate growth indicators
-                    business_age = 2025 - business.get('year_established', 2020)
+                    from datetime import datetime as _dt
+                    business_age = _dt.now().year - business.get('year_established', 2020)
                     area_metrics[county_full]['avg_business_age'].append(business_age)
                     area_metrics[county_full]['opportunity_count'] += 1
                     area_metrics[county_full]['innovation_indicators'] += business.get('patent_count', 0)

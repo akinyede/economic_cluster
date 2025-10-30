@@ -85,6 +85,88 @@ class ImprovedPatentAnalyzer:
         self._log_statistics(stats)
         
         return patent_mapping
+
+    # --- Memory-efficient streaming analysis helpers ---
+    def analyze_patents_streaming(self, 
+                                  businesses_file: str,
+                                  chunk_size: int = 1000,
+                                  progress_callback: Optional[callable] = None) -> Dict[str, int]:
+        """Stream process patent counts for large CSVs to reduce memory pressure."""
+        from pathlib import Path
+        import pandas as pd
+        if not Path(businesses_file).exists():
+            raise FileNotFoundError(f"Business file not found: {businesses_file}")
+
+        total_patents: Dict[str, int] = {}
+        chunks_processed = 0
+
+        # Estimate number of chunks for progress
+        try:
+            with open(businesses_file, 'r', encoding='utf-8', errors='ignore') as f:
+                total_lines = max(0, sum(1 for _ in f) - 1)
+            total_chunks = max(1, (total_lines // chunk_size) + 1)
+        except Exception:
+            total_chunks = None
+
+        for chunk_df in pd.read_csv(businesses_file, chunksize=chunk_size):
+            chunk_patents = self._process_patent_chunk(chunk_df)
+            for name, cnt in chunk_patents.items():
+                total_patents[name] = total_patents.get(name, 0) + cnt
+            chunks_processed += 1
+            if progress_callback and total_chunks:
+                progress_pct = (chunks_processed / total_chunks) * 100
+                progress_callback(progress_pct, f"Processed {chunks_processed}/{total_chunks} chunks")
+            # free memory
+            try:
+                del chunk_df
+                import gc
+                gc.collect()
+            except Exception:
+                pass
+
+        return total_patents
+
+    def _process_patent_chunk(self, businesses_df: pd.DataFrame) -> Dict[str, int]:
+        """Process a single chunk of businesses using batch organization queries."""
+        patent_counts: Dict[str, int] = {}
+        batch_size = 25
+        records = businesses_df.to_dict('records')
+        for i in range(0, len(records), batch_size):
+            org_names = [r.get('name') for r in records[i:i + batch_size] if r.get('name')]
+            if not org_names:
+                continue
+            results = self._batch_query_patents(org_names)
+            patent_counts.update(results)
+        return patent_counts
+
+    def _batch_query_patents(self, org_names: List[str]) -> Dict[str, int]:
+        """Query patents for a batch of organizations via BatchPatentSearcher."""
+        results: Dict[str, int] = {}
+        try:
+            counts = self.batch_searcher.batch_search_patents_for_orgs(org_names)
+            # Normalize to original names
+            for org in org_names:
+                results[org] = int(counts.get(org, 0) or 0)
+        except Exception as e:
+            logger.warning(f"Batch patent query failed: {e}")
+            for org in org_names:
+                results[org] = 0
+        return results
+
+    def _match_organization_name(self, patent_org: str, original_names: List[str]) -> Optional[str]:
+        patent_org_clean = self._clean_org_name(patent_org).upper()
+        for original in original_names:
+            original_clean = self._clean_org_name(original).upper()
+            if patent_org_clean == original_clean:
+                return original
+            sim = self._calculate_similarity(patent_org_clean, original_clean)
+            if sim > 0.85:
+                return original
+        return None
+
+    def _calculate_similarity(self, str1: str, str2: str) -> float:
+        from difflib import SequenceMatcher
+        return SequenceMatcher(None, str1, str2).ratio()
     
     def get_cluster_patent_analysis(self, cluster: Dict, patent_mapping: Dict[str, int]) -> Dict:
         """

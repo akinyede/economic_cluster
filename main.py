@@ -32,6 +32,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+try:
+    from utils.metrics import analysis_duration
+except Exception:
+    analysis_duration = None
 
 class ClusterPredictionTool:
     """Main application class for cluster prediction"""
@@ -232,16 +236,23 @@ class ClusterPredictionTool:
                 parent[rb] = ra
 
         # Thresholds
-        JACC_STRICT = 0.5
-        JACC_LOOSE = 0.3
-        DIST_KM = 8.0
+        JACC_STRICT = 0.45
+        JACC_LOOSE = 0.28
+        DIST_KM = 10.0
+
+        # Helper: name similarity
+        try:
+            from difflib import SequenceMatcher as _SeqMatch
+            def _name_sim(a, b):
+                return _SeqMatch(None, (a or ''), (b or '')).ratio()
+        except Exception:
+            def _name_sim(a, b):
+                return 0.0
 
         for i in range(n):
             for j in range(i+1, n):
                 type_i = clusters[i].get('type') or 'mixed'
                 type_j = clusters[j].get('type') or 'mixed'
-                if type_i != type_j:
-                    continue
                 A, B = sigs[i], sigs[j]
                 if not A['keys'] or not B['keys']:
                     continue
@@ -249,7 +260,20 @@ class ClusterPredictionTool:
                 union_sz = len(A['keys'] | B['keys']) or 1
                 jacc = inter / union_sz
                 dist = self._km_dist(A['centroid'], B['centroid'])
-                if jacc >= JACC_STRICT or (dist < DIST_KM and jacc >= JACC_LOOSE):
+                # Primary merge by overlap and proximity (same type)
+                if type_i == type_j and (jacc >= JACC_STRICT or (dist < DIST_KM and jacc >= JACC_LOOSE)):
+                    union(i, j)
+                    continue
+                # Secondary merge by near-identical names regardless of type
+                name_i = self._normalize_text(clusters[i].get('name', ''))
+                name_j = self._normalize_text(clusters[j].get('name', ''))
+                if name_i and name_j:
+                    sim = _name_sim(name_i, name_j)
+                    if sim >= 0.90 and dist < 5.0:
+                        union(i, j)
+                        continue
+                # Tertiary: very strong overlap regardless of type
+                if jacc >= 0.70 and dist < 3.0:
                     union(i, j)
 
         groups: Dict[int, List[int]] = {}
@@ -286,7 +310,7 @@ class ClusterPredictionTool:
         for col in ['revenue_estimate', 'employees', 'naics_code']:
             if col not in df.columns:
                 df[col] = 0
-        return self.optimizer.calculate_economic_impact(df)
+        return self.optimizer.calculate_economic_impact(df, years=self.config.TIME_HORIZON_YEARS)
 
     def run_full_analysis(self, custom_params: Dict = None, progress_callback=None) -> Dict:
         """Run complete cluster analysis pipeline
@@ -383,7 +407,11 @@ class ClusterPredictionTool:
             report_progress('data_collection', 30, 
                           f'Collecting business data from {len(data_sources)} sources{"" if skip_patents else " (including patents)"}...')
             
-            scraping_results = self.scraper.run_full_scraping_cycle()
+            if analysis_duration:
+                with analysis_duration.labels(stage='data_collection').time():
+                    scraping_results = self.scraper.run_full_scraping_cycle()
+            else:
+                scraping_results = self.scraper.run_full_scraping_cycle()
             
             report_progress('data_collection', 100, 
                           f'Collected {len(scraping_results["businesses"])} businesses',
@@ -418,7 +446,11 @@ class ClusterPredictionTool:
                         sample_size_early = 10000
 
                 # Clean the data (fast pass)
-                cleaned_df = cleaner.clean_business_data(business_df)
+                if analysis_duration:
+                    with analysis_duration.labels(stage='data_cleaning').time():
+                        cleaned_df = cleaner.clean_business_data(business_df)
+                else:
+                    cleaned_df = cleaner.clean_business_data(business_df)
 
                 # Deterministic de-dup (fast)
                 cleaned_df = cleaner.deduplicate_by_priority(cleaned_df)
@@ -840,26 +872,43 @@ class ClusterPredictionTool:
                 # Let the user know in the progress UI
                 report_progress('cluster_formation', 35, 'Quick mode: using greedy optimizer for faster clustering')
 
-            clusters = self.optimizer.optimize_clusters(
-                scored_businesses,
-                num_clusters=num_clusters,  # None by default for auto-discovery
-                cluster_size=cluster_size,
-                economic_targets=economic_targets,
-                optimization_focus=optimization_focus,
-                progress_callback=optimizer_progress,
-                params=self.params,  # Pass params to optimizer
-                runtime_options={**(self.runtime_options or {}), 'force_full': force_full}
-            )
+            if analysis_duration:
+                with analysis_duration.labels(stage='cluster_formation').time():
+                    clusters = self.optimizer.optimize_clusters(
+                        scored_businesses,
+                        num_clusters=num_clusters,  # None by default for auto-discovery
+                        cluster_size=cluster_size,
+                        economic_targets=economic_targets,
+                        optimization_focus=optimization_focus,
+                        progress_callback=optimizer_progress,
+                        params=self.params,  # Pass params to optimizer
+                        runtime_options={**(self.runtime_options or {}), 'force_full': force_full}
+                    )
+            else:
+                clusters = self.optimizer.optimize_clusters(
+                    scored_businesses,
+                    num_clusters=num_clusters,  # None by default for auto-discovery
+                    cluster_size=cluster_size,
+                    economic_targets=economic_targets,
+                    optimization_focus=optimization_focus,
+                    progress_callback=optimizer_progress,
+                    params=self.params,  # Pass params to optimizer
+                    runtime_options={**(self.runtime_options or {}), 'force_full': force_full}
+                )
             
             report_progress('cluster_formation', 100, 
                           f'Discovered {len(clusters)} optimal clusters',
                           f'✓ Identified {len(clusters)} high-potential economic clusters through data-driven discovery')
 
             # NEW: Consolidate overlapping/duplicate clusters before downstream analysis
+            pre_cons_count = None
+            post_cons_count = None
             try:
                 before_n = len(clusters)
                 clusters = self._consolidate_clusters(clusters)
                 after_n = len(clusters)
+                pre_cons_count = before_n
+                post_cons_count = after_n
                 if after_n < before_n:
                     logger.info(f"Consolidation: {before_n} → {after_n} clusters after merging overlaps")
                     report_progress('cluster_formation', 100,
@@ -882,7 +931,7 @@ class ClusterPredictionTool:
                             cluster_df = cluster['businesses']
                         
                         # Calculate impact using conservative multipliers from paper
-                        impact = self.optimizer.calculate_economic_impact(cluster_df)
+                        impact = self.optimizer.calculate_economic_impact(cluster_df, years=self.config.TIME_HORIZON_YEARS)
                         
                         # Add impact projections to cluster data
                         cluster['economic_impact'] = impact
@@ -953,17 +1002,32 @@ class ClusterPredictionTool:
                         sig = inspect.signature(self.ml_enhancer.enhance_clusters)
                         if len(sig.parameters) >= 3 or 'kc_enhanced_data' in sig.parameters:
                             # V2 enhancer with KC support
-                            enhanced_clusters, ml_explanations = self.ml_enhancer.enhance_clusters(
-                                clusters, 
-                                historical_data,
-                                kc_enhanced_data
-                            )
+                            if analysis_duration:
+                                with analysis_duration.labels(stage='ml_enhancement').time():
+                                    enhanced_clusters, ml_explanations = self.ml_enhancer.enhance_clusters(
+                                        clusters, 
+                                        historical_data,
+                                        kc_enhanced_data
+                                    )
+                            else:
+                                enhanced_clusters, ml_explanations = self.ml_enhancer.enhance_clusters(
+                                    clusters, 
+                                    historical_data,
+                                    kc_enhanced_data
+                                )
                         else:
                             # V1 enhancer without KC support
-                            enhanced_clusters, ml_explanations = self.ml_enhancer.enhance_clusters(
-                                clusters, 
-                                historical_data
-                            )
+                            if analysis_duration:
+                                with analysis_duration.labels(stage='ml_enhancement').time():
+                                    enhanced_clusters, ml_explanations = self.ml_enhancer.enhance_clusters(
+                                        clusters, 
+                                        historical_data
+                                    )
+                            else:
+                                enhanced_clusters, ml_explanations = self.ml_enhancer.enhance_clusters(
+                                    clusters, 
+                                    historical_data
+                                )
                     else:
                         logger.warning("ML enhancer does not have enhance_clusters method")
                         enhanced_clusters = clusters
@@ -1126,6 +1190,8 @@ class ClusterPredictionTool:
             results["steps"]["cluster_optimization"] = {
                 "clusters_identified": len(validated_clusters),
                 "clusters": validated_clusters,
+                "pre_consolidation_count": pre_cons_count if pre_cons_count is not None else len(validated_clusters),
+                "post_consolidation_count": post_cons_count if post_cons_count is not None else len(validated_clusters),
                 "natural_communities_found": getattr(self.optimizer, 'natural_communities_count', None),
                 "natural_communities_details": getattr(self.optimizer, 'natural_communities_details', [])
             }
@@ -1877,21 +1943,35 @@ class ClusterPredictionTool:
         baseline_direct_jobs_sum = 0
 
         for c in clusters:
-            if 'metrics' in c:
+            # Prefer per-cluster economic impact if available for consistent aggregation
+            if 'economic_impact' in c and isinstance(c['economic_impact'], dict):
+                ei = c['economic_impact']
+                total_gdp += float(ei.get('gdp_impact_5yr') or ei.get('projected_gdp_impact') or 0)
+                total_direct_jobs += int(ei.get('direct_jobs') or 0)
+                total_all_jobs += int(ei.get('total_jobs') or 0)
+                # Baselines (if available on cluster)
+                baseline_revenue_sum += float(c.get('total_revenue') or ei.get('base_revenue') or 0)
+                baseline_direct_jobs_sum += int(c.get('total_employees') or ei.get('base_employees') or 0)
+            elif 'metrics' in c:
                 # Strategic cluster format
-                total_gdp += c['metrics'].get('projected_gdp_impact', 0)
-                total_direct_jobs += c['metrics'].get('total_employees', 0)
-                total_all_jobs += c['metrics'].get('projected_jobs', 0)
+                total_gdp += float(c['metrics'].get('projected_gdp_impact', 0))
+                # Use job creation (projected), not raw baseline employees
+                total_all_jobs += int(c['metrics'].get('projected_jobs', 0))
+                # Estimate direct as min(total_all_jobs, baseline employees) if available
+                baseline_emp = int(c['metrics'].get('total_employees', 0))
+                total_direct_jobs += min(int(c['metrics'].get('projected_jobs', 0)), baseline_emp)
                 # Baselines
-                baseline_revenue_sum += c['metrics'].get('total_revenue', 0)
-                baseline_direct_jobs_sum += c['metrics'].get('total_employees', 0)
+                baseline_revenue_sum += float(c['metrics'].get('total_revenue', 0))
+                baseline_direct_jobs_sum += baseline_emp
             else:
                 # Optimization cluster format
-                total_gdp += c.get("projected_gdp_impact", 0)
-                total_direct_jobs += c.get("total_employees", 0)
-                total_all_jobs += c.get("projected_jobs", 0)
-                baseline_revenue_sum += c.get('total_revenue', 0)
-                baseline_direct_jobs_sum += c.get('total_employees', 0)
+                total_gdp += float(c.get("projected_gdp_impact", 0))
+                total_all_jobs += int(c.get("projected_jobs", 0))
+                # Estimate direct as min(projected_jobs, total_employees) if available
+                baseline_emp = int(c.get("total_employees", 0))
+                total_direct_jobs += min(int(c.get("projected_jobs", 0)), baseline_emp)
+                baseline_revenue_sum += float(c.get('total_revenue', 0))
+                baseline_direct_jobs_sum += baseline_emp
             
             # Calculate wage impact for this cluster
             cluster_wage_impact = self._calculate_cluster_wage_impact(c, industry_avg_wages)
@@ -1917,11 +1997,15 @@ class ClusterPredictionTool:
                 if conservative_gdp_cap > 0 and total_gdp > conservative_gdp_cap:
                     total_gdp = conservative_gdp_cap
                 if conservative_jobs_cap > 0 and total_all_jobs > conservative_jobs_cap:
-                    total_all_jobs = conservative_jobs_cap
+                    # Scale both direct and total to maintain ratio
+                    scale = conservative_jobs_cap / max(1, float(total_all_jobs))
+                    total_all_jobs = int(conservative_jobs_cap)
+                    total_direct_jobs = int(total_direct_jobs * scale)
 
                 # Apply friction factor universally to reflect behavioral/implementation frictions
                 total_gdp *= self.config.CALIBRATION_FRICTION
                 total_all_jobs = int(total_all_jobs * self.config.CALIBRATION_FRICTION)
+                total_direct_jobs = int(total_direct_jobs * self.config.CALIBRATION_FRICTION)
 
             except Exception as _:
                 # Fail-safe: do not block pipeline on calibration error
@@ -1935,8 +2019,12 @@ class ClusterPredictionTool:
                 scale = getattr(self.config, 'TRIGGER_SCALE', 0.90)
                 total_gdp *= scale
                 total_all_jobs = int(total_all_jobs * scale)
+                total_direct_jobs = int(total_direct_jobs * scale)
         except Exception:
             pass
+
+        # Enforce logical consistency: totals must be >= direct, and compute indirect as delta for display
+        total_all_jobs = max(total_all_jobs, total_direct_jobs)
 
         # Calculate ROI correctly
         if total_investment_needed > 0:
@@ -2100,7 +2188,13 @@ class ClusterPredictionTool:
     def _save_businesses(self, businesses_df: pd.DataFrame):
         """Save scored businesses to database"""
         try:
-            # Clear existing businesses
+            # Clear dependent memberships first to satisfy FK constraints, then businesses
+            try:
+                self.session.query(ClusterMembership).delete()
+                self.session.flush()
+            except Exception:
+                # Proceed; if table empty or missing, continue
+                pass
             self.session.query(Business).delete()
             
             for _, row in businesses_df.iterrows():
@@ -2142,6 +2236,42 @@ class ClusterPredictionTool:
             self.session.query(Cluster).delete()
             self.session.commit()
             
+            # Build in-memory index for robust business matching
+            def _norm(s: str) -> str:
+                try:
+                    return self._normalize_text(s)
+                except Exception:
+                    return (s or '').strip().upper()
+
+            all_db_businesses = self.session.query(Business).all()
+            index_name_county_city = {}
+            index_name_county = {}
+            index_name = {}
+            index_key = {}
+            index_geo = {}
+            for b in all_db_businesses:
+                k3 = (_norm(b.name), _norm(b.county), _norm(b.city))
+                k2 = (_norm(b.name), _norm(b.county))
+                k1 = _norm(b.name)
+                # Recreate business_key from available fields
+                addr = getattr(b, 'address', None) if hasattr(b, 'address') else None
+                zip5 = getattr(b, 'zip', None) if hasattr(b, 'zip') else None
+                if addr or zip5:
+                    key = f"{k1}|{_norm(addr)}|{str(zip5 or '')[:5]}".strip('|')
+                    index_key[key] = b
+                # Geo index (rounded)
+                try:
+                    lat = float(getattr(b, 'latitude', None) or 0)
+                    lon = float(getattr(b, 'longitude', None) or 0)
+                    gk = (round(lat, 4), round(lon, 4))
+                    index_geo[gk] = b
+                except Exception:
+                    pass
+                index_name_county_city[k3] = b
+                index_name_county[k2] = b
+                if k1 not in index_name:
+                    index_name[k1] = b
+
             # Save each cluster
             for cluster_data in clusters:
                 # Handle both strategic and optimization cluster formats
@@ -2191,10 +2321,45 @@ class ClusterPredictionTool:
                 
                 if cluster:
                     # Add cluster memberships
+                    unmatched = 0
                     for business_data in cluster_data.get("businesses", []):
-                        business = self.session.query(Business).filter_by(
-                            name=business_data.get("name", "Unknown")
-                        ).first()
+                        # Robust matching using normalized keys
+                        bname = _norm(business_data.get('name', 'Unknown'))
+                        bcounty = _norm(business_data.get('county', ''))
+                        bcity = _norm(business_data.get('city', ''))
+                        # Try business_key
+                        try:
+                            key = self._business_key(business_data)
+                        except Exception:
+                            key = ''
+                        business = None
+                        if key:
+                            business = index_key.get(self._normalize_text(key)) or index_key.get(key)
+                        # Name + county + city
+                        if business is None:
+                            business = (
+                                index_name_county_city.get((bname, bcounty, bcity)) or
+                                index_name_county.get((bname, bcounty)) or
+                                index_name.get(bname)
+                            )
+                        # Geo proximity match
+                        if business is None:
+                            try:
+                                lat = float(business_data.get('lat') or business_data.get('latitude') or 0)
+                                lon = float(business_data.get('lon') or business_data.get('longitude') or 0)
+                                gk = (round(lat, 4), round(lon, 4))
+                                business = index_geo.get(gk)
+                            except Exception:
+                                pass
+                        # Fuzzy fallback on name
+                        if business is None and bname:
+                            try:
+                                from difflib import get_close_matches as _gcm
+                                cand = _gcm(bname, list(index_name.keys()), n=1, cutoff=0.92)
+                                if cand:
+                                    business = index_name.get(cand[0])
+                            except Exception:
+                                pass
                         
                         if business:
                             membership = ClusterMembership(
@@ -2204,6 +2369,15 @@ class ClusterPredictionTool:
                                 synergy_score=float(cluster_data.get("synergy_score", 0))
                             )
                             self.session.add(membership)
+                        else:
+                            unmatched += 1
+                    # Attach unmatched count to cluster data for UI/reporting
+                    try:
+                        cluster_data['unmatched_members'] = int(unmatched)
+                    except Exception:
+                        pass
+                    if unmatched:
+                        logger.info(f"Cluster '{cluster.name}': {unmatched} businesses could not be matched to DB records")
             
             # Commit memberships
             self.session.commit()
@@ -2408,7 +2582,8 @@ The analysis identified {results['steps'].get('cluster_optimization', {}).get('c
             return [], {}
             
         original_count = len(businesses)
-        current_year = 2025
+        from datetime import datetime as _dt
+        current_year = _dt.now().year
         
         # Track filter statistics
         filter_stats = {

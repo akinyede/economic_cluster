@@ -4,6 +4,7 @@
 import pandas as pd
 import numpy as np
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class DataCleaner:
             cleaned_df.loc[cleaned_df['employees'] < 1, 'employees'] = 1
         
         # 5. Fix year established
-        current_year = 2025
+        current_year = datetime.now().year
         
         # Future years
         future_years = cleaned_df['year_established'] > current_year

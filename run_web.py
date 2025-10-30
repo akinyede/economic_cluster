@@ -67,23 +67,17 @@ def main():
     print("Open your browser to: http://localhost:5001 (or next available port)")
     print("\nPress Ctrl+C to stop the server")
     print("-" * 60)
-    # Default the app to the latest final enriched dataset if present
-    os.environ.setdefault('FINAL_DATASET_CSV', '/Users/soa8nb/Desktop/cluster_prediction_tool/data/final_enriched_entities.csv')
-    
-    # Prefer standardized enriched dataset for end-to-end pipeline
+    # Default the app to the latest final enriched dataset if present (workspace-relative)
     try:
-        std_path = "/Users/soa8nb/Desktop/cluster_prediction_tool/data/final_enriched_entities_std.csv"
-        fallback_path = "/Users/soa8nb/Desktop/cluster_prediction_tool/data/final_enriched_entities.csv"
+        base_dir = os.path.dirname(__file__)
+        std_path = os.path.join(base_dir, 'data', 'final_enriched_entities_std.csv')
+        fallback_path = os.path.join(base_dir, 'data', 'final_enriched_entities.csv')
         if os.path.exists(std_path):
-            os.environ['FINAL_DATASET_CSV'] = std_path
+            os.environ.setdefault('FINAL_DATASET_CSV', std_path)
         elif os.path.exists(fallback_path):
-            os.environ['FINAL_DATASET_CSV'] = fallback_path
-        else:
-            # Keep any user-provided env if present, else leave unset
             os.environ.setdefault('FINAL_DATASET_CSV', fallback_path)
     except Exception:
-        # Fallback path default
-        os.environ.setdefault('FINAL_DATASET_CSV', "/Users/soa8nb/Desktop/cluster_prediction_tool/data/final_enriched_entities.csv")
+        pass
 
     # Run the Flask app with cleaner output
     try:

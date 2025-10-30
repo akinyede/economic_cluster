@@ -3,6 +3,9 @@
 import os
 import sys
 import warnings
+from concurrent.futures import ThreadPoolExecutor
+from threading import Semaphore
+import atexit
 
 # Suppress all non-critical warnings at application startup
 warnings.filterwarnings('ignore', message='.*urllib3 v2 only supports OpenSSL.*')
@@ -47,6 +50,8 @@ from utils.cache import cache  # Import the new cache instance
 from utils.visualization_generator import VisualizationGenerator
 from database import db
 from models import AnalysisResult, AnalysisCluster
+from utils.metrics import get_metrics, metrics_collector
+from config_validator import validate_analysis_params as validate_params_pydantic
 
 # Import enhanced ML components
 try:
@@ -64,6 +69,11 @@ logger = logging.getLogger(__name__)
 
 # Use a global variable for the async_mode
 socketio = SocketIO(async_mode='threading')
+
+# Resource controls for background analysis tasks
+ANALYSIS_THREAD_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix='analysis_worker')
+ACTIVE_TASKS = {}
+TASK_SEMAPHORE = Semaphore(10)
 
 def convert_numpy_types(obj):
     """Recursively convert NumPy types to Python native types"""
@@ -423,6 +433,11 @@ def create_app(config_class=Config):
             except Exception:
                 pass
 
+    # Wrapped version with metrics
+    @metrics_collector.track_analysis(mode='full')
+    def run_analysis_task_with_metrics(task_id: str, params: Dict, session_id: str = None, user_ip: str = None):
+        return run_analysis_task(task_id, params, session_id, user_ip)
+
     # --- Routes ---
     @app.route('/')
     def index():
@@ -632,19 +647,25 @@ def create_app(config_class=Config):
     @app.route('/api/run_analysis_async', methods=['POST'])
     @require_csrf
     def run_analysis_async():
-        """Endpoint to start a new analysis task asynchronously."""
+        """Start a new analysis task via managed thread pool with validation."""
+        # Capacity gate
+        if not TASK_SEMAPHORE.acquire(blocking=False):
+            return jsonify({'error': 'Server at capacity', 'message': 'Too many concurrent analyses. Please try again later.'}), 503
+
         task_id = str(uuid.uuid4())
-        params = request.json
-        
-        # Validate parameters
-        validation_errors = validate_analysis_params(params)
-        if validation_errors:
-            return jsonify({'error': 'Invalid parameters', 'details': validation_errors}), 400
-        
-        # Get session ID and user IP from current request
+        raw_params = request.json or {}
+
+        # Validate and normalize
+        try:
+            params = validate_params_pydantic(raw_params)
+        except Exception as e:
+            TASK_SEMAPHORE.release()
+            return jsonify({'error': 'Invalid parameters', 'details': str(e)}), 400
+
+        # Request context
         session_id = session.get('session_id')
         user_ip = request.remote_addr
-        
+
         import time as _time
         with task_lock:
             analysis_tasks[task_id] = {
@@ -657,12 +678,20 @@ def create_app(config_class=Config):
                 'highlights': [],
                 'start_time': int(_time.time())
             }
-        
-        # Start the background task
-        thread = Thread(target=run_analysis_task, args=(task_id, params, session_id, user_ip))
-        thread.daemon = True
-        thread.start()
-        
+
+        # Submit to thread pool
+        def _task_wrapper():
+            try:
+                run_analysis_task_with_metrics(task_id, params, session_id, user_ip)
+            finally:
+                TASK_SEMAPHORE.release()
+                with task_lock:
+                    ACTIVE_TASKS.pop(task_id, None)
+
+        future = ANALYSIS_THREAD_POOL.submit(_task_wrapper)
+        with task_lock:
+            ACTIVE_TASKS[task_id] = future
+
         return jsonify({'task_id': task_id, 'status': 'Analysis started'})
 
     @app.route('/api/analysis_status/<task_id>', methods=['GET'])
@@ -778,6 +807,28 @@ def create_app(config_class=Config):
             )
         finally:
             db_session.close()
+
+    # Metrics and health endpoints
+    @app.route('/metrics')
+    def metrics():
+        return get_metrics()
+
+    # health endpoints added later with /readyz
+
+    def initialize_resources():
+        logger.info("Initializing application resources")
+    # Flask 3 removed before_first_request; invoke directly at startup
+    initialize_resources()
+
+    def _cleanup_resources():
+        try:
+            logger.info("Shutting down analysis thread pool")
+            ANALYSIS_THREAD_POOL.shutdown(wait=True, cancel_futures=True)
+            logger.info("Thread pool shutdown complete")
+        except Exception:
+            pass
+
+    atexit.register(_cleanup_resources)
 
     @app.route('/api/export/csv/<export_id>', methods=['GET'])
     @validate_export_id('export_id')

@@ -1,12 +1,25 @@
-"""Batch patent search optimization for KC Cluster Prediction Tool"""
+"""Batch patent search optimization for KC Cluster Prediction Tool
+
+This module previously used the PatentsView API (search.patentsview.org),
+which now frequently returns 410/500 responses. To avoid noisy failures
+and wasted time, we disable external patent fetches by default when the
+configured endpoint appears to be PatentsView or when SKIP_PATENT_SEARCH
+is enabled. In that case, we immediately return zero counts with a clear log.
+
+To explicitly force PatentsView on (not recommended), set env
+ENABLE_PATENTSVIEW=true.
+"""
 import json
 import logging
 import time
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional
 import requests
 from dataclasses import dataclass
+from utils.circuit_breaker import circuit_breaker
+from .lens_client import LensPatentClient
 import re
 from collections import defaultdict
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +51,29 @@ class BatchPatentSearcher:
             "Prairie Village", "Gardner", "Grandview", "Leawood",
             "Mission", "Raymore", "Belton", "Grain Valley"
         ]
+        # Decide if external patent API should be disabled
+        url_lower = str(self.api_url).lower()
+        patentsview_like = ('patentsview' in url_lower)
+        enable_patentsview = os.getenv('ENABLE_PATENTSVIEW', 'false').lower() == 'true'
+        skip_patent_search = bool(getattr(self.config, 'SKIP_PATENT_SEARCH', False))
+        # Lens client (preferred)
+        lens_token = getattr(self.config, 'LENS_API_TOKEN', None) or os.getenv('LENS_API_TOKEN')
+        lens_url = getattr(self.config, 'LENS_API_URL', None) or os.getenv('LENS_API_URL', 'https://api.lens.org/patent/search')
+        self.lens: Optional[LensPatentClient] = None
+        if lens_token:
+            try:
+                self.lens = LensPatentClient(api_url=lens_url, token=lens_token)
+                logger.info("Lens API enabled for patent counts")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Lens client: {e}")
+                self.lens = None
+        # Disable PatentsView if present and not explicitly enabled
+        self._patents_api_disabled = skip_patent_search or (patentsview_like and not enable_patentsview)
+
+        logger.info(
+            f"BatchPatentSearcher module path: {__file__}, uspto_url={self.api_url}, "
+            f"skip_patent_search={skip_patent_search}, patents_api_disabled={self._patents_api_disabled}"
+        )
     
     def set_progress_callback(self, cb):
         """Provide a progress callback receiving (percent:int, message:str)."""
@@ -61,6 +97,16 @@ class BatchPatentSearcher:
             Dictionary mapping business name to patent count
         """
         logger.info(f"Starting batch patent search for {len(business_names)} businesses")
+        # Prefer Lens if available
+        if self.lens:
+            return self.lens.search_batch_counts(business_names)
+        # Short-circuit if PatentsView is disabled/unavailable
+        if self._patents_api_disabled or not self.headers.get('X-Api-Key'):
+            if self._patents_api_disabled:
+                logger.warning("Patent API disabled or unsupported (PatentsView detected); returning zero counts.")
+            else:
+                logger.warning("No USPTO API key found; returning zero patent counts.")
+            return {name: 0 for name in business_names}
         start_time = time.time()
         
         # Step 1: Fetch all KC-area patents
@@ -85,6 +131,8 @@ class BatchPatentSearcher:
         """Fetch all patents from KC metropolitan area via POST pagination + retries.
         Falls back to company-only if location query keeps failing.
         """
+        if self._patents_api_disabled:
+            return []
         all_patents: List[PatentData] = []
         seen_patent_ids: Set[str] = set()
 
@@ -101,10 +149,14 @@ class BatchPatentSearcher:
         url = self.api_url if self.api_url.endswith('/') else self.api_url + '/'
         self._emit_progress(15, f"Starting KC-area patent fetch (per_page={per_page}, max_pages={max_pages})")
 
+        @circuit_breaker(failure_threshold=3, recovery_timeout=60, name="patentsview_api")
+        def _cb_post(url: str, payload: Dict):
+            return requests.post(url, json=payload, headers={**self.headers, 'Content-Type': 'application/json'}, timeout=30)
+
         def post_with_retry(payload: Dict, retries: int = 3, backoff: float = 1.0):
             for attempt in range(retries):
                 try:
-                    resp = requests.post(url, json=payload, headers={**self.headers, 'Content-Type': 'application/json'}, timeout=30)
+                    resp = _cb_post(url, payload)
                     if resp.status_code == 200:
                         return resp
                     logger.warning(f"PatentsView POST failed (status {resp.status_code}) on page {payload.get('o',{}).get('page')}.")
@@ -178,6 +230,17 @@ class BatchPatentSearcher:
 
     def batch_search_patents_for_orgs(self, org_names: List[str]) -> Dict[str, int]:
         """Fast path: fetch patents only for the provided organization names (nationwide)."""
+        # Prefer Lens if available
+        if self.lens:
+            return self.lens.search_batch_counts(org_names)
+        # Short-circuit if PatentsView is disabled/unavailable
+        if self._patents_api_disabled or not self.headers.get('X-Api-Key'):
+            if self._patents_api_disabled:
+                logger.warning("Patent API disabled or unsupported (PatentsView detected); returning zero counts for orgs.")
+            else:
+                logger.warning("No USPTO API key found; returning zero patent counts for orgs.")
+            return {name: 0 for name in org_names}
+
         counts: Dict[str, int] = {}
         total = max(1, len(org_names))
         for i, name in enumerate(org_names, 1):
@@ -192,9 +255,15 @@ class BatchPatentSearcher:
     
     def _fetch_company_patents_nationwide(self, company_name: str) -> List[PatentData]:
         """Fetch patents for a specific company via POST with small pages + retries."""
+        if self._patents_api_disabled:
+            return []
         patents: List[PatentData] = []
         variations = self._generate_company_variations(company_name)
         url = self.api_url if self.api_url.endswith('/') else self.api_url + '/'
+
+        @circuit_breaker(failure_threshold=3, recovery_timeout=60, name="patentsview_org_api")
+        def _cb_post_page(payload: Dict):
+            return requests.post(url, json=payload, headers={**self.headers, 'Content-Type': 'application/json'}, timeout=20)
 
         def post_page(page: int, per_page: int = 100, retries: int = 2):
             payload = {
@@ -205,7 +274,7 @@ class BatchPatentSearcher:
             backoff = 0.8
             for _ in range(retries):
                 try:
-                    r = requests.post(url, json=payload, headers={**self.headers, 'Content-Type': 'application/json'}, timeout=20)
+                    r = _cb_post_page(payload)
                     if r.status_code == 200:
                         return r.json()
                     logger.warning(f"Org POST {company_name} page {page} failed {r.status_code}")

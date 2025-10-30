@@ -1,5 +1,6 @@
 ﻿"""Cluster optimization module using NSGA-II algorithm"""
 import numpy as np
+from datetime import datetime as _dt
 import pandas as pd
 from deap import base, creator, tools, algorithms
 from typing import List, Dict, Tuple, Optional
@@ -457,6 +458,7 @@ class ClusterOptimizer:
             if size_class != 'varied':
                 grouping_reasons.append(f"Similar business size ({size_class})")
             
+            from datetime import datetime as _dt
             detail = {
                 'id': i + 1,
                 'name': f"Community {i+1}: {county} - {industry_names.get(primary_industry, primary_industry).title()} ({size_class.title()})",
@@ -465,7 +467,7 @@ class ClusterOptimizer:
                 'primary_industries': industry_breakdown,
                 'avg_employees': int(community['employees'].mean()),
                 'total_revenue': community['revenue_estimate'].sum(),
-                'avg_business_age': int(2025 - community['year_established'].mean()),
+                'avg_business_age': int(_dt.now().year - community['year_established'].mean()),
                 'size_distribution': {
                     'small': len(community[community['employees'] < 50]),
                     'medium': len(community[(community['employees'] >= 50) & (community['employees'] < 500)]),
@@ -483,28 +485,35 @@ class ClusterOptimizer:
         """
         Calculate conservative economic impact projections using paper's multipliers
         Based on Akinyede & Caruso (2025) methodology
+
+        Fixed: Employment multiplier is applied only to incremental job growth to
+        avoid double-counting growth and multiplier effects.
         """
         # Get conservative multipliers from config
         gdp_multiplier = self.config.ECONOMIC_MULTIPLIERS.get('gdp', 1.85)
         employment_multiplier = self.config.ECONOMIC_MULTIPLIERS.get('employment', 2.2)
-        indirect_jobs_multiplier = self.config.ECONOMIC_MULTIPLIERS.get('indirect_jobs', 1.28)
-        
+
         # Calculate base metrics
         total_revenue = cluster_businesses['revenue_estimate'].sum()
-        total_employees = cluster_businesses['employees'].sum()
+        baseline_employees = cluster_businesses['employees'].sum()
         num_businesses = len(cluster_businesses)
-        
+
         # Estimate growth rate based on industry mix
         avg_growth_rate = 0.06  # Default 6% annual growth
-        
-        # Calculate 5-year projections with conservative multipliers
+
+        # Calculate 5-year GDP projections with conservative multipliers
         direct_gdp = total_revenue * (1 + avg_growth_rate) ** years
         total_gdp_impact = direct_gdp * gdp_multiplier
-        
-        # Employment projections (jobs grow slower than GDP)
-        direct_jobs = total_employees * (1 + avg_growth_rate/2) ** years
-        total_jobs_impact = direct_jobs * employment_multiplier
-        indirect_jobs = (total_jobs_impact - direct_jobs) * indirect_jobs_multiplier
+
+        # Employment projections (jobs grow slightly slower than GDP)
+        job_growth_rate = avg_growth_rate * 0.8
+        future_direct_jobs = baseline_employees * math.pow(1 + job_growth_rate, years)
+        direct_job_growth = max(0.0, future_direct_jobs - baseline_employees)
+        indirect_job_growth = direct_job_growth * max(0.0, employment_multiplier - 1)
+        total_jobs_impact = baseline_employees + direct_job_growth + indirect_job_growth
+        # For reporting
+        direct_jobs = baseline_employees + direct_job_growth
+        indirect_jobs = indirect_job_growth
         
         # Apply regional strategic multipliers if applicable
         cluster_industries = cluster_businesses['naics_code'].str[:4].value_counts()
@@ -521,29 +530,34 @@ class ClusterOptimizer:
             elif naics_prefix.startswith('52'):  # Finance
                 strategic_multiplier = max(strategic_multiplier, self.config.REGIONAL_STRATEGIC_MULTIPLIERS.get('fintech', 1.15))
         
-        # Apply strategic multiplier
+        # Apply strategic multiplier to impacts and recompute to preserve identities
         total_gdp_impact *= strategic_multiplier
-        total_jobs_impact = int(total_jobs_impact * strategic_multiplier)
+        total_jobs_scaled = total_jobs_impact * strategic_multiplier
+        direct_jobs_scaled = direct_jobs * strategic_multiplier
+        # Round consistently and enforce identity: total = direct + indirect
+        total_jobs_int = int(round(total_jobs_scaled))
+        direct_jobs_int = int(round(direct_jobs_scaled))
+        indirect_jobs_int = max(0, total_jobs_int - direct_jobs_int)
         
         # Calculate confidence intervals (±15% for conservative estimates)
         confidence_level = 0.15
         gdp_lower = total_gdp_impact * (1 - confidence_level)
         gdp_upper = total_gdp_impact * (1 + confidence_level)
-        jobs_lower = int(total_jobs_impact * (1 - confidence_level))
-        jobs_upper = int(total_jobs_impact * (1 + confidence_level))
+        jobs_lower = int(round(total_jobs_int * (1 - confidence_level)))
+        jobs_upper = int(round(total_jobs_int * (1 + confidence_level)))
         
         return {
             'gdp_impact_5yr': total_gdp_impact,
             'gdp_impact_lower': gdp_lower,
             'gdp_impact_upper': gdp_upper,
-            'total_jobs': int(total_jobs_impact),
-            'direct_jobs': int(direct_jobs),
-            'indirect_jobs': int(indirect_jobs),
+            'total_jobs': total_jobs_int,
+            'direct_jobs': direct_jobs_int,
+            'indirect_jobs': indirect_jobs_int,
             'jobs_lower': jobs_lower,
             'jobs_upper': jobs_upper,
             'num_businesses': num_businesses,
             'base_revenue': total_revenue,
-            'base_employees': total_employees,
+            'base_employees': baseline_employees,
             'multipliers_used': {
                 'gdp': gdp_multiplier,
                 'employment': employment_multiplier,
@@ -1229,7 +1243,8 @@ class ClusterOptimizer:
             risk_score += 20
         
         # Age distribution risk (too many new businesses)
-        avg_age = 2025 - businesses["year_established"].mean()
+        from datetime import datetime as _dt
+        avg_age = _dt.now().year - businesses["year_established"].mean()
         if avg_age < 3:
             risk_score += 20
         
@@ -1282,7 +1297,7 @@ class ClusterOptimizer:
                 "total_employees": cluster_businesses["employees"].sum(),
                 "total_revenue": cluster_businesses["revenue_estimate"].sum(),
                 "innovation_score": innovation_score,
-                "avg_business_age": (2025 - cluster_businesses["year_established"]).mean(),
+                "avg_business_age": ((_dt.now().year - cluster_businesses["year_established"]).mean()),
                 "projected_gdp_impact": gdp_impact,
                 "projected_jobs": job_creation,
                 "risk_score": risk_score,
@@ -1535,7 +1550,8 @@ class ClusterOptimizer:
         
         # 4. Business maturity (mix of established and growing)
         if 'year_established' in cluster_businesses.columns:
-            current_year = 2025
+            from datetime import datetime as _dt
+            current_year = _dt.now().year
             ages = current_year - cluster_businesses['year_established']
             avg_age = ages.mean()
             
@@ -2460,7 +2476,7 @@ class ClusterOptimizer:
                     "total_employees": cluster_businesses["employees"].sum(),
                     "total_revenue": cluster_businesses["revenue_estimate"].sum(),
                     "innovation_score": solution.fitness.values[1],
-                    "avg_business_age": (2025 - cluster_businesses["year_established"]).mean(),
+                    "avg_business_age": ((_dt.now().year - cluster_businesses["year_established"]).mean()),
                     "projected_gdp_impact": solution.fitness.values[0],
                     "projected_jobs": solution.fitness.values[2],
                     "risk_score": solution.fitness.values[4]  # Include risk_score in metrics
@@ -3106,7 +3122,8 @@ class ClusterOptimizer:
             score += 2.0  # KC's rail infrastructure is long-term asset
         
         # Workforce stability
-        avg_business_age = 2025 - businesses["year_established"].mean()
+        from datetime import datetime as _dt
+        avg_business_age = _dt.now().year - businesses["year_established"].mean()
         if avg_business_age > 10:
             score += 1.0
         

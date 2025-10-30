@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+from utils.circuit_breaker import circuit_breaker
 
 try:
     from shapely.geometry import Point, shape
@@ -129,6 +130,15 @@ class BusinessDataScraper:
         session.mount("https://", adapter)
         
         return session
+
+    # --- Circuit breaker protected helpers for external APIs ---
+    @circuit_breaker(failure_threshold=3, recovery_timeout=60, name="sbir_api")
+    def _cb_sbir_get(self, url: str, params: Dict, timeout: int):
+        return requests.get(url, params=params, timeout=timeout)
+
+    @circuit_breaker(failure_threshold=3, recovery_timeout=60, name="bls_api")
+    def _cb_bls_post(self, url: str, data: str, headers: Dict, timeout: int):
+        return requests.post(url, data=data, headers=headers, timeout=timeout)
         
     def scrape_kansas_businesses(self) -> List[Dict]:
         """Scrape business data from Kansas Secretary of State"""
@@ -159,6 +169,9 @@ class BusinessDataScraper:
                     logger.warning("Failed to scrape real data, falling back to simulated data")
             
             # Generate realistic Kansas businesses
+            if os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true':
+                logger.warning("Strict real-data mode enabled; skipping simulated Kansas businesses.")
+                return []
             kansas_counties = [c for c in self.config.KC_MSA_COUNTIES if ", KS" in c]
             
             business_templates = [
@@ -313,6 +326,10 @@ class BusinessDataScraper:
                 ("Clinical", "6215", 35, 140),
             ]
             
+            if os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true':
+                logger.warning("Strict real-data mode enabled; skipping simulated Missouri businesses.")
+                return []
+
             business_id = 5000
             for county in missouri_counties:
                 county_name = county.split(",")[0]
@@ -443,14 +460,20 @@ class BusinessDataScraper:
             awards = self._fetch_real_sbir_data()
             
             if not awards:
-                logger.warning("No SBIR data retrieved, using simulated data")
-                awards = self._get_simulated_sbir_data()
+                strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+                if strict_real:
+                    logger.warning("No SBIR data retrieved and strict mode enabled; returning empty awards.")
+                    awards = []
+                else:
+                    logger.warning("No SBIR data retrieved, using simulated data")
+                    awards = self._get_simulated_sbir_data()
             else:
                 self._set_to_cache(cache_key, awards, timeout=86400) # Cache for 24 hours
                     
         except Exception as e:
             logger.error(f"Error scraping SBIR awards: {e}")
-            awards = self._get_simulated_sbir_data()
+            strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+            awards = [] if strict_real else self._get_simulated_sbir_data()
                 
         logger.info(f"Retrieved {len(awards)} SBIR/STTR awards")
         return awards
@@ -522,7 +545,7 @@ class BusinessDataScraper:
             query_params["rows"] = 50
             
             try:
-                response = requests.get(url, params=query_params, timeout=self.config.API_TIMEOUT_LONG)
+                response = self._cb_sbir_get(url, query_params, timeout=self.config.API_TIMEOUT_LONG)
                 if response.status_code == 429:
                     logger.warning(f"SBIR API rate limit encountered for params {query_params}.")
                     rate_limited = True
@@ -660,15 +683,21 @@ class BusinessDataScraper:
                 logger.info("Using real BLS API for employment data")
                 employment_data = self._fetch_real_bls_data()
             else:
-                logger.warning("No BLS API key found, using mock data")
-                # Fallback to mock data if no API key
-                employment_data = self._get_mock_bls_data()
+                # Respect strict real-data mode
+                strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+                if strict_real:
+                    logger.warning("No BLS API key; strict real-data mode active — skipping BLS employment data")
+                    employment_data = {}
+                else:
+                    logger.warning("No BLS API key found, using mock data")
+                    # Fallback to mock data if no API key
+                    employment_data = self._get_mock_bls_data()
                 
         except Exception as e:
             logger.error(f"Error fetching BLS data: {e}")
-            # Return mock data as fallback
-            employment_data = self._get_mock_bls_data()
-            
+            strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+            employment_data = {} if strict_real else self._get_mock_bls_data()
+        
         return employment_data
     
     def _fetch_real_bls_data(self) -> Dict:
@@ -900,7 +929,7 @@ class BusinessDataScraper:
                 })
                 
                 logger.info(f"Requesting SOC data for {len(batch)} series")
-                response = requests.post(url, data=data, headers=headers, timeout=self.config.API_TIMEOUT_LONG)
+                response = self._cb_bls_post(url, data=data, headers=headers, timeout=self.config.API_TIMEOUT_LONG)
                 
                 if response.status_code == 200:
                     result = response.json()
@@ -1234,8 +1263,10 @@ class BusinessDataScraper:
         
         if uncached_businesses:
             try:
-                if self.config.USPTO_API_KEY:
-                    logger.info("Using batch USPTO API search for patent data.")
+                lens_available = bool(getattr(self.config, 'LENS_API_TOKEN', None) or os.getenv('LENS_API_TOKEN'))
+                uspto_available = bool(getattr(self.config, 'USPTO_API_KEY', None))
+                if lens_available or uspto_available:
+                    logger.info("Using batch patent search (Lens preferred if available).")
                     from .patent_batch_optimizer import BatchPatentSearcher
                     
                     batch_searcher = BatchPatentSearcher(self.config)
@@ -1250,8 +1281,13 @@ class BusinessDataScraper:
                     stats = batch_searcher.get_patent_statistics(new_patents)
                     logger.info(f"Batch search stats: {stats['businesses_with_patents']}/{stats['total_businesses']} entities have patents. Total patents: {stats['total_patents']}")
                 else:
-                    logger.warning("No USPTO API key found, using simulated data.")
-                    new_patents = self._get_simulated_patent_data(uncached_businesses)
+                    strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+                    if strict_real:
+                        logger.warning("No Lens/USPTO credentials; strict real-data mode — skipping patent fetch for uncached businesses")
+                        new_patents = {name: 0 for name in uncached_businesses}
+                    else:
+                        logger.warning("No Lens/USPTO credentials found, using simulated patent data.")
+                        new_patents = self._get_simulated_patent_data(uncached_businesses)
                 
                 patent_counts.update(new_patents)
                 
@@ -1265,8 +1301,9 @@ class BusinessDataScraper:
                     
             except Exception as e:
                 logger.error(f"Error in batch patent search: {e}", exc_info=True)
-                logger.info("Falling back to individual patent searches.")
-                new_patents = self._fetch_real_uspto_data(uncached_businesses)
+                # Avoid PatentsView fallback (deprecated/unstable); return zeros to honor real-data-only mode
+                logger.info("Skipping individual patent searches (PatentsView deprecated). Returning zero counts for remaining businesses.")
+                new_patents = {name: 0 for name in uncached_businesses}
                 patent_counts.update(new_patents)
             
         return patent_counts
@@ -2067,6 +2104,7 @@ class BusinessDataScraper:
             "funding": cluster_amounts
         }
     
+    @circuit_breaker(failure_threshold=5, recovery_timeout=30, name="fred_api")
     def fetch_fred_data(self, series_id: str = "KSMSA28140URN") -> Optional[Dict]:
         """
         Fetch macroeconomic data from FRED (Federal Reserve Economic Data)
@@ -2076,23 +2114,33 @@ class BusinessDataScraper:
             # FRED API endpoint
             base_url = "https://api.stlouisfed.org/fred/series/observations"
             
-            # You would need an API key in production
+            if not getattr(self.config, 'FRED_API_KEY', None):
+                strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+                if strict_real:
+                    logger.info("FRED API key not set; strict mode — skipping FRED macro data")
+                    return None
+                # No strict mode: do not return fabricated values here; rely on MarketMonitor where simulation is controlled
+                return None
             params = {
                 'series_id': series_id,
-                'api_key': self.config.FRED_API_KEY if hasattr(self.config, 'FRED_API_KEY') else 'demo',
+                'api_key': self.config.FRED_API_KEY,
                 'file_type': 'json',
-                'limit': 100,
+                'limit': 1,
                 'sort_order': 'desc'
             }
-            
-            # For now, return mock data structure
-            logger.info(f"Would fetch FRED data for series: {series_id}")
-            return {
-                'unemployment_rate': 3.8,
-                'gdp_growth': 2.3,
-                'inflation_rate': 2.5,
-                'interest_rate': 5.25
-            }
+            import requests
+            r = requests.get(base_url, params=params, timeout=self.config.API_TIMEOUT_SHORT)
+            r.raise_for_status()
+            data = r.json()
+            if 'observations' in data and data['observations']:
+                val = float(data['observations'][0]['value'])
+                return {
+                    'unemployment_rate': val,
+                    'gdp_growth': None,
+                    'inflation_rate': None,
+                    'interest_rate': None
+                }
+            return None
         except Exception as e:
             logger.error(f"Error fetching FRED data: {e}")
             return None
@@ -2102,17 +2150,14 @@ class BusinessDataScraper:
         Fetch energy price data from EIA (Energy Information Administration)
         """
         try:
-            # EIA API endpoint
-            base_url = "https://api.eia.gov/v2/electricity/retail-sales/data"
-            
-            # Mock data structure for energy costs
-            logger.info(f"Would fetch EIA energy data for: {area}")
-            return {
-                'commercial_electricity_rate': 10.5,  # cents per kWh
-                'industrial_electricity_rate': 7.8,
-                'natural_gas_price': 8.45,  # $ per thousand cubic feet
-                'energy_cost_index': 95  # relative to national average (100)
-            }
+            if not getattr(self.config, 'EIA_API_KEY', None):
+                strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+                if strict_real:
+                    logger.info("EIA API key not set; strict mode — skipping EIA energy data")
+                    return None
+                return None
+            # A minimal fetch could be implemented here, but prefer MarketMonitor for full coverage
+            return None
         except Exception as e:
             logger.error(f"Error fetching EIA data: {e}")
             return None
@@ -2122,21 +2167,13 @@ class BusinessDataScraper:
         Fetch market data from Alpha Vantage
         """
         try:
-            # Alpha Vantage API endpoint
-            base_url = "https://www.alphavantage.co/query"
-            
-            # Mock market sentiment data
-            logger.info(f"Would fetch Alpha Vantage market data for: {symbol}")
-            return {
-                'market_sentiment': 'neutral',
-                'volatility_index': 18.5,
-                'sector_performance': {
-                    'technology': 0.08,
-                    'healthcare': 0.06,
-                    'industrials': 0.04,
-                    'financials': 0.03
-                }
-            }
+            if not getattr(self.config, 'ALPHA_VANTAGE_API_KEY', None):
+                strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+                if strict_real:
+                    logger.info("Alpha Vantage API key not set; strict mode — skipping market data")
+                    return None
+                return None
+            return None
         except Exception as e:
             logger.error(f"Error fetching Alpha Vantage data: {e}")
             return None
@@ -2154,33 +2191,58 @@ class BusinessDataScraper:
         """
         logger.info("Integrating federal data sources with weighted contributions...")
         
-        # Fetch macro data once (not per business)
-        fred_data = self.fetch_fred_data()
-        eia_data = self.fetch_eia_data()
-        market_data = self.fetch_alpha_vantage_data()
+        # Fetch macro data once (not per business) using MarketMonitor (real APIs, strict gating)
+        try:
+            from data_collection.market_monitor import MarketMonitor
+            monitor = MarketMonitor()
+            market_bundle = monitor.fetch_all_market_data()
+        except Exception as e:
+            logger.error(f"MarketMonitor unavailable: {e}")
+            market_bundle = {'economic_indicators': {}, 'commodity_prices': {}, 'industry_trends': {}}
         
         # Apply data to businesses
         for business in businesses:
-            # Add macro context
-            if fred_data:
-                business['macro_unemployment'] = fred_data.get('unemployment_rate')
-                business['macro_gdp_growth'] = fred_data.get('gdp_growth')
-            
-            if eia_data:
-                business['energy_cost_index'] = eia_data.get('energy_cost_index')
-                
-            if market_data:
-                # Match business to sector performance
-                naics = business.get('naics_code', '')
+            # Add macro context from economic indicators
+            econ = market_bundle.get('economic_indicators') or {}
+            if 'unemployment' in econ:
+                try:
+                    business['macro_unemployment'] = float(econ['unemployment']['value'])
+                except Exception:
+                    pass
+            if 'gdp_growth' in econ:
+                try:
+                    business['macro_gdp_growth'] = float(econ['gdp_growth']['value'])
+                except Exception:
+                    pass
+
+            # Add simple energy signal
+            commodities = market_bundle.get('commodity_prices') or {}
+            if 'electricity' in commodities and isinstance(commodities['electricity'], dict):
+                try:
+                    # Use price directly as a proxy index (cents/kWh); caller can normalize later
+                    business['energy_cost_index'] = float(commodities['electricity'].get('value'))
+                except Exception:
+                    pass
+
+            # Sector momentum from industry trends / sector performance
+            trends = market_bundle.get('industry_trends') or {}
+            naics = business.get('naics_code', '') or ''
+            sector_momentum = None
+            try:
                 if naics.startswith('54'):  # Tech services
-                    business['sector_momentum'] = market_data['sector_performance'].get('technology', 0)
+                    sector_momentum = trends.get('technology', {}).get('sector_performance')
                 elif naics.startswith('325'):  # Chemicals/Pharma
-                    business['sector_momentum'] = market_data['sector_performance'].get('healthcare', 0)
+                    sector_momentum = trends.get('biosciences', {}).get('sector_performance')
                 elif naics.startswith('33'):  # Manufacturing
-                    business['sector_momentum'] = market_data['sector_performance'].get('industrials', 0)
+                    sector_momentum = trends.get('manufacturing', {}).get('sector_performance')
                 elif naics.startswith('52'):  # Finance
-                    business['sector_momentum'] = market_data['sector_performance'].get('financials', 0)
-        
+                    sector_momentum = trends.get('manufacturing', {}).get('sector_performance')
+            except Exception:
+                sector_momentum = None
+            if sector_momentum is not None:
+                business['sector_momentum'] = sector_momentum
+
+        # Log once per enhancement pass instead of per business
         logger.info(f"Enhanced {len(businesses)} businesses with federal data")
         return businesses
     

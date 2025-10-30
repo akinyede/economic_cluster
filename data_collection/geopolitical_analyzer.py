@@ -28,6 +28,10 @@ class GeopoliticalAnalyzer:
         trade_data = {}
         
         if not self.census_api_key:
+            strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+            if strict_real:
+                logger.warning("Census API key not found; strict real-data mode active — skipping trade data")
+                return {}
             logger.warning("Census API key not found, using simulated data")
             return self._get_simulated_trade_data()
         
@@ -60,7 +64,8 @@ class GeopoliticalAnalyzer:
                         
         except Exception as e:
             logger.error(f"Error fetching trade data: {e}")
-            return self._get_simulated_trade_data()
+            strict_real = bool(getattr(self.config, 'USE_ONLY_REAL_DATA', False) or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true' or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true')
+            return {} if strict_real else self._get_simulated_trade_data()
             
         # Get top trading partners and their stability
         if 'export_data' in trade_data:

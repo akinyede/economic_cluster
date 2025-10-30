@@ -25,6 +25,14 @@ class MarketMonitor:
         self.fred_api_key = self.config.FRED_API_KEY
         self.eia_api_key = self.config.EIA_API_KEY
         self.alpha_vantage_key = self.config.ALPHA_VANTAGE_API_KEY
+        # Strict mode: never use placeholders/simulated values
+        # Respect either config flags or environment variables
+        self.strict_real = bool(
+            getattr(self.config, 'USE_ONLY_REAL_DATA', False)
+            or getattr(self.config, 'NO_FALLBACK_DATA', False)
+            or os.getenv('USE_ONLY_REAL_DATA', 'false').lower() == 'true'
+            or os.getenv('NO_FALLBACK_DATA', 'false').lower() == 'true'
+        )
         
     def fetch_economic_indicators(self) -> Dict:
         """Fetch key economic indicators from FRED"""
@@ -42,6 +50,9 @@ class MarketMonitor:
         }
         
         if not self.fred_api_key:
+            if self.strict_real:
+                logger.warning("FRED API key not found; strict real-data mode active — skipping economic indicators")
+                return {}
             logger.warning("FRED API key not found, using simulated data")
             return self._get_simulated_economic_data()
         
@@ -79,6 +90,9 @@ class MarketMonitor:
         commodities = {}
         
         if not self.eia_api_key:
+            if self.strict_real:
+                logger.warning("EIA API key not found; strict real-data mode active — skipping commodity prices")
+                return {}
             logger.warning("EIA API key not found, using simulated data")
             return self._get_simulated_commodity_data()
         
@@ -172,19 +186,21 @@ class MarketMonitor:
                         logger.info(f"✓ {name}: ${value} {query['units']}")
                     else:
                         logger.warning(f"No data returned for {name}")
-                        # Use fallback value
-                        commodities[name] = self._get_simulated_commodity_data().get(name, {})
+                        if not self.strict_real:
+                            commodities[name] = self._get_simulated_commodity_data().get(name, {})
                 else:
                     logger.error(f"EIA API error for {name}: HTTP {response.status_code}")
-                    # Use fallback value
-                    commodities[name] = self._get_simulated_commodity_data().get(name, {})
+                    if not self.strict_real:
+                        commodities[name] = self._get_simulated_commodity_data().get(name, {})
                         
             except requests.exceptions.Timeout:
-                logger.error(f"Timeout fetching {name} after {self.config.API_TIMEOUT_EXTENDED}s - using cached value")
-                commodities[name] = self._get_simulated_commodity_data().get(name, {})
+                logger.error(f"Timeout fetching {name} after {self.config.API_TIMEOUT_EXTENDED}s")
+                if not self.strict_real:
+                    commodities[name] = self._get_simulated_commodity_data().get(name, {})
             except Exception as e:
                 logger.error(f"Error fetching {name}: {e}")
-                commodities[name] = self._get_simulated_commodity_data().get(name, {})
+                if not self.strict_real:
+                    commodities[name] = self._get_simulated_commodity_data().get(name, {})
                 
         return commodities
     
@@ -258,13 +274,8 @@ class MarketMonitor:
                             performances[sector] = 0.0
                     return performances
                 elif 'Meta Data' in data:
-                    # If API structure changed, return default values
-                    logger.warning("Alpha Vantage API structure changed, using defaults")
-                    return {
-                        'Information Technology': 0.5,
-                        'Health Care': 0.3,
-                        'Industrials': 0.2
-                    }
+                    logger.warning("Alpha Vantage API structure changed; no sector data parsed")
+                    return None
                 else:
                     # Log the response for debugging
                     logger.debug(f"Unexpected Alpha Vantage response: {list(data.keys())}")
@@ -272,8 +283,8 @@ class MarketMonitor:
         except Exception as e:
             logger.error(f"Error fetching sector performance: {e}")
             
-        # Return default values if API fails
-        return {
+        # No defaults in strict mode; otherwise return neutral zeros
+        return None if self.strict_real else {
             'Information Technology': 0.0,
             'Health Care': 0.0,
             'Industrials': 0.0
