@@ -277,7 +277,7 @@ class ImprovedClusterVisualizer:
         
         return list(sub_clusters.values())
     
-    def _create_smooth_boundary(self, businesses: List[Dict], buffer: float = 0.01) -> List[Tuple[float, float]]:
+    def _create_smooth_boundary(self, businesses: List[Dict], buffer: float = 0.02) -> List[Tuple[float, float]]:
         """Create smooth boundary around businesses using buffered convex hull"""
         try:
             points = []

@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/data_preparation/business_indexer.py
+# hypothesis_version: 6.141.1
+
+[0.0, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0, ' ave', ' avenue', ' blvd', ' boulevard', ' cir', ' circle', ' court', ' ct', ' dr', ' drive', ' e', ' east', ' lane', ' ln', ' n', ' north', ' pl', ' place', ' rd', ' road', ' s', ' south', ' st', ' street', ' w', ' west', '000', '1', '2', '3', '4', '5', '6', 'BFPV', 'CGJKQSXZ', 'DT', 'L', 'MN', 'R', '[^\\w\\s]', '\\D', 'a', 'address', 'an', 'and', 'associates', 'at', 'by', 'city', 'co', 'company', 'corp', 'corporation', 'enterprises', 'exact_name', 'for', 'in', 'inc', 'incorporated', 'kc_', 'limited', 'llc', 'ltd', 'name', 'name_soundex', 'name_tokens', 'of', 'phone', 'soundex', 'state', 'the', 'to', 'token', 'zip']

@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/utils/cache.py
+# hypothesis_version: 6.141.1
+
+[0.5, 500, 3600, 'CACHE_KEY_PREFIX', 'CACHE_REDIS_URL', 'CACHE_THRESHOLD', 'CACHE_TYPE', 'Cache cleared.', 'REDIS_URL', 'USE_SIMPLE_CACHE', 'app', 'false', 'kc_cluster_', 'redis', 'simple', 'true', '|']

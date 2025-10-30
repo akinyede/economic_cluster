@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/enhancement/selective_enhancer.py
+# hypothesis_version: 6.141.1
+
+[0.2, 0.25, 0.3, 0.4, 0.5, 0.7, 1.0, 1.1, 100, '\nFeature statistics:', '(\\d{5})', 'Cass', 'Clay', 'Enhancement sources:', 'Jackson', 'Johnson', 'Platte', 'Wyandotte', '_zip5', 'county', 'default', 'defaults', 'direct', 'direct_matches', 'enhanced', 'enhancement_rate', 'feature_ranges', 'high', 'kc_cluster_readiness', 'kc_crime_safety', 'kc_growth_potential', 'kc_growth_x_access', 'kc_location_quality', 'kc_market_access', 'kc_tier', 'low', 'max', 'mean', 'medium', 'min', 'missing_features', 'none', 'premium', 'quality_score', 'std', 'total_businesses', 'zip', 'zip_code', 'zip_matches']

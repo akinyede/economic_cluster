@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+from datetime import datetime
 from typing import List
 import json, re, pickle
 import numpy as np
@@ -25,7 +26,8 @@ class BusinessSelectedPredictor:
     def _build_matrix(self, df: pd.DataFrame) -> pd.DataFrame:
         d = df.copy()
         yr = pd.to_numeric(d.get('year_established'), errors='coerce')
-        d['age_years'] = (2025 - yr).clip(lower=0)
+        current_year = datetime.now().year
+        d['age_years'] = (current_year - yr).clip(lower=0)
         d['innovation_score'] = pd.to_numeric(d.get('innovation_score'), errors='coerce')
         d['county'] = d.get('county').fillna('Unknown')
         d['county_class'] = d.get('county_class').fillna('Other')
@@ -65,4 +67,3 @@ def apply_business_predictions(df: pd.DataFrame) -> pd.DataFrame:
     if _singleton is None:
         _singleton = BusinessSelectedPredictor()
     return _singleton.predict(df)
-

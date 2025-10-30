@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/analysis/patent_analyzer_improved.py
+# hypothesis_version: 6.141.1
+
+[0.0, 0.85, 1.0, 100, 1000, 86400, '__main__', 'businesses', 'cluster_type', 'employees', 'ignore', 'innovation_score', 'mixed', 'naics', 'naics_code', 'name', 'patent_mapping', 'patent_percentage', 'patents', 'r', 'records', 'revenue', 'timestamp', 'top_10_innovators', 'total_businesses', 'total_patents', 'type', 'utf-8', 'w']

@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/utils/metrics.py
+# hypothesis_version: 6.141.1
+
+[0.1, 0.5, 100, 120, 300, 500, 600, 1000, 1800, 5000, 10000, 50000, 'analysis', 'api_name', 'component', 'endpoint', 'error_type', 'failed', 'full', 'mode', 'stage', 'status', 'success', 'total', 'total_businesses', 'total_clusters']

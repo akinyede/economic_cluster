@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/config_validator.py
+# hypothesis_version: 6.141.1
+
+[0.2, 0.7, 100, 200, 500, 10000, 25000, 50000, 100000, ', KS', ', MO', 'Bates County', 'Caldwell County', 'Cass County', 'Clay County', 'Clinton County', 'Direct jobs target', 'Indirect jobs target', 'Jackson County', 'Johnson County', 'Lafayette County', 'Leavenworth County', 'Linn County', 'Miami County', 'Platte County', 'Ray County', 'Wyandotte County', 'after', 'balanced', 'bls_employment', 'both', 'data_sources', 'kansas_counties', 'max', 'min', 'missouri_counties', 'sbir_awards', 'state_registrations', 'university_partners', 'uspto_patents']

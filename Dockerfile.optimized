@@ -1,0 +1,52 @@
+FROM python:3.9-slim as builder
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+FROM python:3.9-slim
+
+RUN apt-get update && apt-get install -y \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN useradd -m -u 1000 appuser
+WORKDIR /app
+
+COPY --chown=appuser:appuser . .
+RUN mkdir -p /app/logs /app/cache /app/analysis_output /app/temp \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import requests; import sys; \
+import os; \
+import urllib.request as u; \
+u.urlopen('http://localhost:5001/healthz', timeout=2)"
+
+EXPOSE 5001
+
+CMD ["gunicorn", \
+     "--worker-class", "eventlet", \
+     "--workers", "4", \
+     "--threads", "2", \
+     "--worker-connections", "1000", \
+     "--bind", "0.0.0.0:5001", \
+     "--timeout", "300", \
+     "--keep-alive", "5", \
+     "--log-level", "info", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "run_app_simple:socketio", "--", "run_app_simple.py"]

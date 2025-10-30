@@ -22,7 +22,8 @@ class SpatialAccuracyEnhancer:
         self.land_use_data = None  # Will be loaded if available
         
         # Enhancement parameters
-        self.default_buffer_distance = 0.005  # degrees (~500m)
+        # Increase default buffer to produce more realistic cluster footprints (~1.5–2km)
+        self.default_buffer_distance = 0.015  # degrees (~1.5km)
         self.min_points_for_boundary = 3
         self.max_points_for_simplification = 100
         
@@ -687,7 +688,8 @@ class SpatialAccuracyEnhancer:
         center_point = Point(kc_center[1], kc_center[0])
         
         # Create small buffer around center
-        return center_point.buffer(0.01)  # ~1km radius
+        # Expand small-center buffer to improve visibility (~3km)
+        return center_point.buffer(0.03)
     
     # Helper methods for coordinate improvement
     def _validate_address_coordinates(self, address: str, lat: float, lon: float) -> Optional[Tuple[float, float]]:

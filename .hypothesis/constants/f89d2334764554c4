@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/kc_enhancement_pipeline.py
+# hypothesis_version: 6.141.1
+
+[0.0, 0.8, 0.85, 0.9, 1000, '.csv', '.metadata.json', '.parquet', '.sample.csv', '/geocode', '/kc_data', '=', 'PIPELINE COMPLETE', '__main__', 'address', 'business_address', 'business_name', 'businesses_processed', 'cache', 'cache_dir', 'coerce', 'composite_features', 'config', 'created_at', 'enabled', 'end_time', 'enhancement_rate', 'exact', 'existing', 'features', 'features_added', 'fuzzy', 'geo_confidence', 'geo_source', 'geocoding', 'input_file', 'kc_', 'kc_columns', 'kc_crime_safety', 'kc_enhancement.log', 'kc_market_access', 'lat', 'latitude', 'licenses', 'logs', 'lon', 'longitude', 'matching', 'methods', 'name', 'output_file', 'phone', 'precise_quota', 'sample_size', 'start_time', 'threshold', 'total_businesses', 'w']

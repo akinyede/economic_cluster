@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/database.py
+# hypothesis_version: 6.141.1
+
+[3600, 'DATABASE_URL', 'USE_SQLITE', 'check_same_thread', 'connect', 'connect_timeout', 'false', 'kc_clusters.db', 'roi', 'sqlite', 'timeout', 'true']

@@ -841,9 +841,9 @@ class VisualizationGenerator:
                 )
             ])
             
-            subtitle = "(de-biased: removed total_revenue, total_employees, business_count)"
+            subtitle = ""
             fig.update_layout(
-                title=f'ML Model Feature Importance {subtitle}',
+                title='ML model Feature importance',
                 xaxis_title='Impact on Predictions (normalized, SHAP/permutation-inspired)',
                 yaxis_title='Features',
                 height=400,

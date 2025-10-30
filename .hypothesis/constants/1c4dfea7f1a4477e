@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/ml/business_selected_inference.py
+# hypothesis_version: 6.141.1
+
+[0.0, '0000', 'Other', 'Unknown', '\\D', 'age_years', 'business_selected', 'cluster', 'cluster_type', 'coerce', 'county', 'county_class', 'employees', 'features', 'in_focus_county', 'innovation_score', 'models', 'naics4', 'naics_code', 'pred_employees', 'pred_log_employees', 'pred_log_revenue', 'pred_revenue', 'r', 'rb', 'revenue_estimate', 'year_established']

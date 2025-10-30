@@ -1,0 +1,4 @@
+# file: /Users/soa8nb/Desktop/cluster_prediction_tool/utils/kc_county_boundaries.py
+# hypothesis_version: 6.141.1
+
+[-95.2486, -94.9636, -94.8636, -94.6133, -94.5786, -94.2133, -93.7783, -93.4333, 38.0169, 38.0897, 38.4519, 38.5247, 38.7369, 38.8472, 39.0219, 39.1295, 39.1397, 39.2078, 39.2797, 39.4095, 39.4297, 39.5697, 39.7597, 39.9497, 'Bates County, MO', 'Caldwell County, MO', 'Cass County, MO', 'Clay County, MO', 'Clinton County, MO', 'Jackson County, MO', 'Johnson County, KS', 'Lafayette County, MO', 'Linn County, KS', 'Miami County, KS', 'Platte County, MO', 'Polygon', 'Ray County, MO', 'Wyandotte County, KS', 'coordinates', 'rural', 'suburban', 'type', 'urban']

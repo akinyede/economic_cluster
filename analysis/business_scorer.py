@@ -100,8 +100,9 @@ class BusinessScorer:
         score += (revenue_points + employee_points)
 
         # Momentum (0-30): favor younger in high-growth, but capped
+        from datetime import datetime as _dt
         year_established = int(business.get("year_established", 2020))
-        business_age = max(0, 2025 - year_established)
+        business_age = max(0, _dt.now().year - year_established)
         # Scale: new (<=5y): 1.0; 6-10y: 0.67; older: 0.33
         if business_age <= 5:
             age_factor = 1.0
@@ -575,7 +576,8 @@ class BusinessScorer:
     def apply_business_filters(self, businesses: List[Dict]) -> Tuple[List[Dict], Dict]:
         """Apply business filtering criteria with industry-specific thresholds"""
         filtered = businesses.copy()  # Start with all businesses
-        current_year = 2025
+        from datetime import datetime as _dt
+        current_year = _dt.now().year
         initial_count = len(businesses)
         
         # Log filter criteria
